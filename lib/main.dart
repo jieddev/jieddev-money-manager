@@ -27,54 +27,61 @@ class MyApp extends StatelessWidget {
 class MoneyManagerHomePage extends StatefulWidget {
   const MoneyManagerHomePage({super.key});
 
-
-
   @override
   State<MoneyManagerHomePage> createState() => _MoneyManagerHomePageState();
 }
 
 class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
-  static const int _transactionAmount = 10;
+  static const List<String> _categories = <String>[
+    'Food',
+    'Transportation',
+    'Bills',
+    'Entertainment',
+    'Savings',
+    'Other',
+    '__custom__',
+  ];
 
   int _balance = 0;
+  final List<TransactionRecord> _transactions = <TransactionRecord>[];
 
-  Future<void> _adjustBalance({required bool add}) async {
-    final controller = TextEditingController();
-
-    final amountText = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(add ? 'Add amount' : 'Subtract amount'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Amount',
-            hintText: 'Enter a number',
-          ),
+  Future<void> _openTransactionPage() async {
+    final transaction = await Navigator.of(context).push<TransactionEntry>(
+      MaterialPageRoute(
+        builder: (context) => TransactionEntryPage(
+          title: 'Log',
+          categories: _categories,
+          actionLabel: 'Update',
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('Apply'),
-          ),
-        ],
       ),
     );
 
-    final amount = int.tryParse(amountText ?? '');
-    if (amount == null) return;
+    if (transaction == null || !mounted) return;
 
     setState(() {
-      _balance += add ? amount : -amount;
+      _balance += transaction.isAddition ? transaction.amount : -transaction.amount;
+      _transactions.insert(
+        0,
+        TransactionRecord(
+          amount: transaction.amount,
+          category: transaction.category,
+          isAddition: transaction.isAddition,
+        ),
+      );
     });
 
     await HomeWidget.saveWidgetData<int>('balance', _balance);
     await HomeWidget.updateWidget(name: 'MoneyManagerWidgetProvider');
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${_formatCurrency(transaction.amount)} in ${transaction.category}',
+        ),
+      ),
+    );
   }
 
   @override
@@ -124,12 +131,6 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                                 fontWeight: FontWeight.w700,
                               ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Tap add or subtract to change the total by \$$_transactionAmount.',
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
                       ],
                     ),
                   ),
@@ -139,20 +140,49 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: () => _adjustBalance(add: true),
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add'),
+                        onPressed: _openTransactionPage,
+                        label: const Text('Update Money'),
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () => _adjustBalance(add: false),
-                        icon: const Icon(Icons.remove),
-                        label: const Text('Subtract'),
-                      ),
-                    ),
                   ],
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'Transaction history',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: _transactions.isEmpty
+                      ? const Center(
+                          child: Text('No transactions yet.'),
+                        )
+                      : ListView.separated(
+                          itemCount: _transactions.length,
+                          separatorBuilder: (context, index) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final transaction = _transactions[index];
+                            return Card(
+                              elevation: 0,
+                              child: ListTile(
+                                leading: CircleAvatar(
+                                  child: Icon(
+                                    transaction.isAddition ? Icons.add : Icons.remove,
+                                  ),
+                                ),
+                                title: Text(transaction.category),
+                                subtitle: Text(
+                                  transaction.isAddition ? 'Added to balance' : 'Subtracted from balance',
+                                ),
+                                trailing: Text(
+                                  '${transaction.isAddition ? '+' : '-'}${_formatCurrency(transaction.amount)}',
+                                  style: Theme.of(context).textTheme.titleMedium,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -164,6 +194,187 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
   String _formatCurrency(int amount) {
     final prefix = amount < 0 ? '-' : '';
-    return '$prefix\$${amount.abs()}';
+    return '$prefix₱${amount.abs()}';
+  }
+}
+
+class TransactionEntry {
+  const TransactionEntry({
+    required this.amount,
+    required this.category,
+    required this.isAddition,
+  });
+
+  final int amount;
+  final String category;
+  final bool isAddition;
+}
+
+class TransactionRecord {
+  const TransactionRecord({
+    required this.amount,
+    required this.category,
+    required this.isAddition,
+  });
+
+  final int amount;
+  final String category;
+  final bool isAddition;
+}
+
+class TransactionEntryPage extends StatefulWidget {
+  const TransactionEntryPage({
+    super.key,
+    required this.title,
+    required this.categories,
+    required this.actionLabel,
+  });
+
+  final String title;
+  final List<String> categories;
+  final String actionLabel;
+
+  @override
+  State<TransactionEntryPage> createState() => _TransactionEntryPageState();
+}
+
+class _TransactionEntryPageState extends State<TransactionEntryPage> {
+  final TextEditingController _amountController = TextEditingController();
+  final TextEditingController _customCategoryController = TextEditingController();
+  String _selectedSign = '+';
+  String? _selectedCategory;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategory = widget.categories.first;
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _customCategoryController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final amount = int.tryParse(_amountController.text.trim());
+    final category = _selectedCategory == '__custom__'
+        ? _customCategoryController.text.trim()
+        : _selectedCategory;
+
+    if (amount == null || amount <= 0 || category == null || category.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).pop(
+      TransactionEntry(
+        amount: amount,
+        category: category,
+        isAddition: _selectedSign == '+',
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.title)),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Enter the amount and choose a category.',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 24),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 96,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedSign,
+                      decoration: const InputDecoration(
+                        labelText: 'Sign',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: const [
+                        DropdownMenuItem<String>(
+                          value: '+',
+                          child: Text('+'),
+                        ),
+                        DropdownMenuItem<String>(
+                          value: '-',
+                          child: Text('-'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedSign = value ?? '+';
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Amount',
+                        hintText: 'Enter a number',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category',
+                  border: OutlineInputBorder(),
+                ),
+                items: widget.categories
+                    .map(
+                      (category) => DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(category == '__custom__' ? 'Custom category' : category),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value;
+                  });
+                },
+              ),
+                if (_selectedCategory == '__custom__') ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _customCategoryController,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Custom category',
+                      hintText: 'Enter category name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: _submit,
+                child: Text('${widget.actionLabel} balance'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
