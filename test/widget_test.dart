@@ -1,30 +1,86 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:jieddev_money_manager/data/money_manager_repository.dart';
 import 'package:jieddev_money_manager/main.dart';
 
+class FakeMoneyManagerRepository implements MoneyManagerRepository {
+  FakeMoneyManagerRepository({MoneyManagerSnapshot? initialSnapshot})
+      : _snapshot =
+            initialSnapshot ??
+            const MoneyManagerSnapshot(
+              balance: 0,
+              transactions: <TransactionRecord>[],
+              categories: <String>['Bills', 'Entertainment', 'Food', 'Other', 'Savings', 'Transportation'],
+            );
+
+  MoneyManagerSnapshot _snapshot;
+
+  @override
+  Future<void> addTransaction({
+    required int amount,
+    required String category,
+    required bool isAddition,
+  }) async {
+    final transaction = TransactionRecord(
+      id: _snapshot.transactions.length + 1,
+      amount: amount,
+      category: category,
+      isAddition: isAddition,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
+
+    final updatedCategories = <String>{..._snapshot.categories, category}.toList();
+    final updatedBalance = _snapshot.balance + (isAddition ? amount : -amount);
+
+    _snapshot = MoneyManagerSnapshot(
+      balance: updatedBalance,
+      transactions: <TransactionRecord>[transaction, ..._snapshot.transactions],
+      categories: updatedCategories,
+    );
+  }
+
+  @override
+  Future<MoneyManagerSnapshot> loadSnapshot() async => _snapshot;
+}
+
 void main() {
-  testWidgets('updates the balance when adding and subtracting',
+  testWidgets('loads persisted data and saves new transactions',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+    final repository = FakeMoneyManagerRepository(
+      initialSnapshot: MoneyManagerSnapshot(
+        balance: 250,
+        transactions: <TransactionRecord>[
+          TransactionRecord(
+            id: 1,
+            amount: 250,
+            category: 'Food',
+            isAddition: true,
+            createdAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+        categories: <String>['Bills', 'Entertainment', 'Food', 'Other', 'Savings', 'Transportation'],
+      ),
+    );
 
-    expect(find.text(r'$0'), findsOneWidget);
+    await tester.pumpWidget(MyApp(repository: repository));
+    await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, 'Add'));
-    await tester.pump();
-    expect(find.text(r'$10'), findsOneWidget);
+    expect(find.text('₱250'), findsWidgets);
+    expect(find.text('Balance by day'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Subtract'));
-    await tester.pump();
-    expect(find.text(r'$0'), findsOneWidget);
-  });
+    await tester.tap(find.byKey(const Key('weekly-balance-chart')));
+    await tester.pumpAndSettle();
 
-  testWidgets('supports negative balances', (WidgetTester tester) async {
-    await tester.pumpWidget(const MyApp());
+    expect(find.textContaining('Selected:'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Subtract'));
-    await tester.pump();
+    await tester.tap(find.widgetWithText(FilledButton, 'Update Money'));
+    await tester.pumpAndSettle();
 
-    expect(find.text(r'-$10'), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '50');
+    await tester.tap(find.widgetWithText(FilledButton, 'Update balance'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('₱300'), findsWidgets);
   });
 }
