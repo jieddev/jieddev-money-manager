@@ -6,15 +6,19 @@ class TransactionRecord {
     required this.id,
     required this.amount,
     required this.category,
+    required this.description,
     required this.isAddition,
     required this.createdAt,
   });
 
   final int id;
   final int amount;
-  final String category;
+  final String? category;
+  final String? description;
   final bool isAddition;
   final DateTime createdAt;
+
+  String get displayText => category ?? description ?? '';
 }
 
 class MoneyManagerSnapshot {
@@ -34,7 +38,8 @@ abstract class MoneyManagerRepository {
 
   Future<void> addTransaction({
     required int amount,
-    required String category,
+    String? category,
+    String? description,
     required bool isAddition,
   });
 }
@@ -64,33 +69,14 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     final databasesPath = await getDatabasesPath();
     final db = await openDatabase(
       path.join(databasesPath, _databaseName),
-      version: 1,
+      version: 2,
       onCreate: (database, version) async {
-        await database.execute('''
-          CREATE TABLE categories (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE
-          )
-        ''');
-        await database.execute('''
-          CREATE TABLE transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            amount INTEGER NOT NULL,
-            category TEXT NOT NULL,
-            is_addition INTEGER NOT NULL,
-            created_at TEXT NOT NULL
-          )
-        ''');
-
-        final batch = database.batch();
-        for (final category in _defaultCategories) {
-          batch.insert(
-            'categories',
-            <String, Object?>{'name': category},
-            conflictAlgorithm: ConflictAlgorithm.ignore,
-          );
+        await _createSchema(database);
+      },
+      onUpgrade: (database, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await _migrateTransactionsToDescriptionAwareSchema(database);
         }
-        await batch.commit(noResult: true);
       },
     );
 
@@ -112,7 +98,8 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
           (row) => TransactionRecord(
             id: row['id'] as int,
             amount: row['amount'] as int,
-            category: row['category'] as String,
+            category: row['category'] as String?,
+            description: row['description'] as String?,
             isAddition: (row['is_addition'] as int) == 1,
             createdAt: DateTime.parse(row['created_at'] as String),
           ),
@@ -134,24 +121,84 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
   @override
   Future<void> addTransaction({
     required int amount,
-    required String category,
+    String? category,
+    String? description,
     required bool isAddition,
   }) async {
+    if ((category == null || category.isEmpty) &&
+        (description == null || description.isEmpty)) {
+      throw ArgumentError('Either category or description must be provided.');
+    }
+
     final db = await _db;
     await db.insert(
       'transactions',
       <String, Object?>{
         'amount': amount,
         'category': category,
+        'description': description,
         'is_addition': isAddition ? 1 : 0,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       },
     );
 
-    await db.insert(
-      'categories',
-      <String, Object?>{'name': category},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    if (category != null && category.isNotEmpty) {
+      await db.insert(
+        'categories',
+        <String, Object?>{'name': category},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+  }
+
+  Future<void> _createSchema(Database database) async {
+    await database.execute('''
+      CREATE TABLE categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount INTEGER NOT NULL,
+        category TEXT,
+        description TEXT,
+        is_addition INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+
+    final batch = database.batch();
+    for (final category in _defaultCategories) {
+      batch.insert(
+        'categories',
+        <String, Object?>{'name': category},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> _migrateTransactionsToDescriptionAwareSchema(
+    Database database,
+  ) async {
+    await database.execute('ALTER TABLE transactions RENAME TO transactions_old');
+    await database.execute('''
+      CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        amount INTEGER NOT NULL,
+        category TEXT,
+        description TEXT,
+        is_addition INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+      )
+    ''');
+    await database.execute('''
+      INSERT INTO transactions (id, amount, category, description, is_addition, created_at)
+      SELECT id, amount, category, NULL, is_addition, created_at
+      FROM transactions_old
+    ''');
+    await database.execute('DROP TABLE transactions_old');
   }
 }

@@ -19,18 +19,22 @@ class FakeMoneyManagerRepository implements MoneyManagerRepository {
   @override
   Future<void> addTransaction({
     required int amount,
-    required String category,
+    String? category,
+    String? description,
     required bool isAddition,
   }) async {
     final transaction = TransactionRecord(
       id: _snapshot.transactions.length + 1,
       amount: amount,
       category: category,
+      description: description,
       isAddition: isAddition,
       createdAt: DateTime.utc(2026, 1, 1),
     );
 
-    final updatedCategories = <String>{..._snapshot.categories, category}.toList();
+    final updatedCategories = category == null
+        ? _snapshot.categories
+        : <String>{..._snapshot.categories, category}.toList();
     final updatedBalance = _snapshot.balance + (isAddition ? amount : -amount);
 
     _snapshot = MoneyManagerSnapshot(
@@ -55,6 +59,7 @@ void main() {
             id: 1,
             amount: 250,
             category: 'Food',
+            description: null,
             isAddition: true,
             createdAt: DateTime.utc(2026, 1, 1),
           ),
@@ -66,7 +71,7 @@ void main() {
     await tester.pumpWidget(MyApp(repository: repository));
     await tester.pumpAndSettle();
 
-    expect(find.text('₱250'), findsWidgets);
+    expect(find.textContaining('₱250'), findsWidgets);
     expect(find.text('Balance by day'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('weekly-balance-chart')));
@@ -78,9 +83,14 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, '50');
+    await tester.tap(find.widgetWithText(RadioListTile<String>, 'Description'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Lunch with client');
     await tester.tap(find.widgetWithText(FilledButton, 'Update balance'));
     await tester.pumpAndSettle();
 
-    expect(find.text('₱300'), findsWidgets);
+    expect(repository._snapshot.transactions.first.displayText, 'Lunch with client');
+    expect(repository._snapshot.categories.contains('Lunch with client'), isFalse);
+    expect(repository._snapshot.balance, 300);
   });
 }

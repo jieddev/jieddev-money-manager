@@ -57,7 +57,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
       final sign = transaction.isAddition ? '+' : '-';
       final month = transaction.createdAt.month.toString().padLeft(2, '0');
       final day = transaction.createdAt.day.toString().padLeft(2, '0');
-      return '$month/$day  ${transaction.category}  $sign${_formatCurrency(transaction.amount)}';
+      return '$month/$day  ${transaction.displayText}  $sign${_formatCurrency(transaction.amount)}';
     }).join('\n');
   }
 
@@ -138,11 +138,13 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                     transaction.isAddition ? Icons.add : Icons.remove,
                   ),
                 ),
-                title: Text(transaction.category),
+                title: Text(transaction.displayText),
                 subtitle: Text(
-                  transaction.isAddition
-                      ? 'Added to balance'
-                      : 'Subtracted from balance',
+                  transaction.category != null
+                      ? (transaction.isAddition
+                            ? 'Added to balance in category'
+                            : 'Subtracted from balance in category')
+                      : 'Description only',
                 ),
                 trailing: Text(
                   '${transaction.isAddition ? '+' : '-'}${_formatCurrency(transaction.amount)}',
@@ -222,6 +224,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     await widget.repository.addTransaction(
       amount: transaction.amount,
       category: transaction.category,
+      description: transaction.description,
       isAddition: transaction.isAddition,
     );
 
@@ -232,7 +235,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${_formatCurrency(transaction.amount)} in ${transaction.category}',
+          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${_formatCurrency(transaction.amount)} in ${transaction.category ?? transaction.description}',
         ),
       ),
     );
@@ -581,11 +584,13 @@ class TransactionEntry {
   const TransactionEntry({
     required this.amount,
     required this.category,
+    required this.description,
     required this.isAddition,
   });
 
   final int amount;
-  final String category;
+  final String? category;
+  final String? description;
   final bool isAddition;
 }
 
@@ -609,8 +614,10 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _customCategoryController =
       TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
   String _selectedSign = '+';
   String? _selectedCategory;
+  String _entryMode = 'category';
 
   @override
   void initState() {
@@ -622,16 +629,31 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
   void dispose() {
     _amountController.dispose();
     _customCategoryController.dispose();
+    _descriptionController.dispose();
     super.dispose();
   }
 
   void _submit() {
     final amount = int.tryParse(_amountController.text.trim());
-    final category = _selectedCategory == '__custom__'
-        ? _customCategoryController.text.trim()
-        : _selectedCategory;
 
-    if (amount == null || amount <= 0 || category == null || category.isEmpty) {
+    String? category;
+    String? description;
+
+    if (_entryMode == 'category') {
+      category = _selectedCategory == '__custom__'
+          ? _customCategoryController.text.trim()
+          : _selectedCategory;
+      if (category == null || category.isEmpty) {
+        return;
+      }
+    } else {
+      description = _descriptionController.text.trim();
+      if (description.isEmpty) {
+        return;
+      }
+    }
+
+    if (amount == null || amount <= 0) {
       return;
     }
 
@@ -639,6 +661,7 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
       TransactionEntry(
         amount: amount,
         category: category,
+        description: description,
         isAddition: _selectedSign == '+',
       ),
     );
@@ -655,10 +678,41 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Enter the amount and choose a category.',
+                'Enter the amount and choose category or description.',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 24),
+              Card(
+                elevation: 0,
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      value: 'category',
+                      groupValue: _entryMode,
+                      title: const Text('Category'),
+                      subtitle: const Text('Add it to your category list'),
+                      onChanged: (value) {
+                        setState(() {
+                          _entryMode = value ?? 'category';
+                        });
+                      },
+                    ),
+                    const Divider(height: 1),
+                    RadioListTile<String>(
+                      value: 'description',
+                      groupValue: _entryMode,
+                      title: const Text('Description'),
+                      subtitle: const Text('Save a free-text note without categorizing it'),
+                      onChanged: (value) {
+                        setState(() {
+                          _entryMode = value ?? 'category';
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -696,38 +750,50 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Category',
-                  border: OutlineInputBorder(),
-                ),
-                items: widget.categories
-                    .map(
-                      (category) => DropdownMenuItem<String>(
-                        value: category,
-                        child: Text(
-                          category == '__custom__'
-                              ? 'Custom category'
-                              : category,
+              if (_entryMode == 'category') ...[
+                DropdownButtonFormField<String>(
+                  initialValue: _selectedCategory,
+                  decoration: const InputDecoration(
+                    labelText: 'Category',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.categories
+                      .map(
+                        (category) => DropdownMenuItem<String>(
+                          value: category,
+                          child: Text(
+                            category == '__custom__'
+                                ? 'Custom category'
+                                : category,
+                          ),
                         ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedCategory = value;
-                  });
-                },
-              ),
-              if (_selectedCategory == '__custom__') ...[
-                const SizedBox(height: 16),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedCategory = value;
+                    });
+                  },
+                ),
+                if (_selectedCategory == '__custom__') ...[
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _customCategoryController,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                      labelText: 'Custom category',
+                      hintText: 'Enter category name',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ] else ...[
                 TextField(
-                  controller: _customCategoryController,
+                  controller: _descriptionController,
                   textInputAction: TextInputAction.done,
                   decoration: const InputDecoration(
-                    labelText: 'Custom category',
-                    hintText: 'Enter category name',
+                    labelText: 'Description',
+                    hintText: 'Enter anything associated with the transaction',
                     border: OutlineInputBorder(),
                   ),
                 ),
