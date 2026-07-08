@@ -7,14 +7,14 @@
     android:padding="16dp"
     android:background="#0B1516">
 
-    <TextView
+    <!-- <TextView
         android:id="@+id/widget_title"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Money Manager"
         android:textStyle="bold"
         android:textSize="18sp"
-        android:textColor="@android:color/white" />
+        android:textColor="@android:color/white" /> -->
 
     <TextView
         android:id="@+id/widget_balance"
@@ -22,6 +22,7 @@
         android:layout_height="wrap_content"
         android:text="$0"
         android:textSize="28sp"
+        android:textStyle="bold"
         android:textColor="@android:color/white" />
 
     <TextView
