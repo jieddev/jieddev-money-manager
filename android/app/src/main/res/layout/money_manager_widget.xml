@@ -23,7 +23,9 @@
         android:text="$0"
         android:textSize="28sp"
         android:textStyle="bold"
-        android:textColor="@android:color/white" />
+        android:textColor="@android:color/white"
+        android:layout_marginBottom="16dp"
+        />
 
     <TextView
         android:id="@+id/widget_history"
