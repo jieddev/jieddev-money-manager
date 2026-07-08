@@ -265,7 +265,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
   String _formatCurrency(int amount) {
     final prefix = amount < 0 ? '-' : '';
-    return '$prefix₱${amount.abs()}';
+    return '$prefix₱${amount.abs().toStringAsFixed(2)}';
   }
 
   String _weekdayLabel(int weekday) {
@@ -574,7 +574,7 @@ class _WeeklyBalanceChartGeometry {
 
 String _formatAxisCurrency(int amount) {
   final prefix = amount < 0 ? '-' : '';
-  return '$prefix₱${amount.abs()}';
+  return '$prefix₱${amount.abs().toStringAsFixed(2)}';
 }
 
 class TransactionEntry {

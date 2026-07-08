@@ -20,11 +20,15 @@ class MoneyManagerWidgetProvider : AppWidgetProvider() {
                 ?: "No transactions yet."
 
             val views = RemoteViews(context.packageName, R.layout.money_manager_widget).apply {
-                setTextViewText(R.id.widget_balance, "₱$balance")
+                setTextViewText(R.id.widget_balance, formatCurrency(balance))
                 setTextViewText(R.id.widget_history, transactionHistory)
             }
 
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
+    }
+
+    private fun formatCurrency(amount: Int): String {
+        return String.format("₱%.2f", amount.toDouble())
     }
 }
