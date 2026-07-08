@@ -5,7 +5,7 @@
     android:orientation="vertical"
     android:gravity="start"
     android:padding="16dp"
-    android:background="@android:color/white">
+    android:background="@android:color/black">
 
     <TextView
         android:id="@+id/widget_title"
@@ -13,19 +13,22 @@
         android:layout_height="wrap_content"
         android:text="Money Manager"
         android:textStyle="bold"
-        android:textSize="18sp" />
+        android:textSize="18sp"
+        android:textColor="@android:color/white" />
 
     <TextView
         android:id="@+id/widget_balance"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="$0"
-        android:textSize="28sp" />
+        android:textSize="28sp"
+        android:textColor="@android:color/white" />
 
     <TextView
         android:id="@+id/widget_history"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="History..."
-        android:textSize="18sp" />
+        android:textSize="10sp"
+        android:textColor="@android:color/white" />
 </LinearLayout>
