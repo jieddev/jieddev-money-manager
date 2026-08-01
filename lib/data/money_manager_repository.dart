@@ -18,7 +18,24 @@ class TransactionRecord {
   final bool isAddition;
   final DateTime createdAt;
 
-  String get displayText => category ?? description ?? '';
+  String get displayText {
+    final hasCategory = category != null && category!.isNotEmpty;
+    final hasDescription = description != null && description!.isNotEmpty;
+
+    if (hasCategory && hasDescription) {
+      return '$category — $description';
+    }
+
+    if (hasCategory) {
+      return category!;
+    }
+
+    if (hasDescription) {
+      return description!;
+    }
+
+    return '';
+  }
 }
 
 class MoneyManagerSnapshot {

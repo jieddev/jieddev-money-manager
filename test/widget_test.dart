@@ -83,13 +83,18 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, '50');
-    await tester.tap(find.widgetWithText(RadioListTile<String>, 'Description'));
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).at(1));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('Food').last);
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField).last, 'Lunch with client');
     await tester.tap(find.widgetWithText(FilledButton, 'Update balance'));
     await tester.pumpAndSettle();
 
-    expect(repository._snapshot.transactions.first.displayText, 'Lunch with client');
+    expect(repository._snapshot.transactions.first.description, 'Lunch with client');
+    expect(repository._snapshot.transactions.first.category, 'Food');
     expect(repository._snapshot.categories.contains('Lunch with client'), isFalse);
     expect(repository._snapshot.balance, 300);
   });

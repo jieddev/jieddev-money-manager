@@ -17,6 +17,8 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   final List<TransactionRecord> _transactions = <TransactionRecord>[];
   List<String> _categories = <String>['__custom__'];
   bool _isLoading = true;
+  static const int _transactionsPageSize = 10;
+  int _visibleTransactionCount = _transactionsPageSize;
 
   @override
   void initState() {
@@ -37,6 +39,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
         ..addAll(snapshot.transactions);
       _categories = <String>[...snapshot.categories, '__custom__'];
       _isLoading = false;
+      _visibleTransactionCount = _transactionsPageSize;
     });
 
     await HomeWidget.saveWidgetData<int>('balance', _balance);
@@ -45,6 +48,16 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
       _buildWidgetTransactionHistory(snapshot.transactions),
     );
     await HomeWidget.updateWidget(name: 'MoneyManagerWidgetProvider');
+  }
+
+  void _loadMoreTransactions() {
+    setState(() {
+      _visibleTransactionCount = (_visibleTransactionCount + _transactionsPageSize).clamp(0, _transactions.length);
+    });
+  }
+
+  List<TransactionRecord> get _visibleTransactions {
+    return _transactions.take(_visibleTransactionCount).toList(growable: false);
   }
 
   String _buildWidgetTransactionHistory(List<TransactionRecord> transactions) {
@@ -123,36 +136,48 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
       if (_transactions.isEmpty)
         const Center(child: Text('No transactions yet.'))
       else
-        ListView.separated(
-          itemCount: _transactions.length,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          separatorBuilder: (context, index) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-            final transaction = _transactions[index];
-            return Card(
-              elevation: 0,
-              child: ListTile(
-                leading: CircleAvatar(
-                  child: Icon(
-                    transaction.isAddition ? Icons.add : Icons.remove,
+        Column(
+          children: [
+            ListView.separated(
+              itemCount: _visibleTransactions.length,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final transaction = _visibleTransactions[index];
+                return Card(
+                  elevation: 0,
+                  child: ListTile(
+                    leading: CircleAvatar(
+                      child: Icon(
+                        transaction.isAddition ? Icons.add : Icons.remove,
+                      ),
+                    ),
+                    title: Text(transaction.displayText),
+                    subtitle: Text(
+                      transaction.category != null
+                          ? (transaction.isAddition
+                                ? 'Added to balance in category'
+                                : 'Subtracted from balance in category')
+                          : 'Description only',
+                    ),
+                    trailing: Text(
+                      '${transaction.isAddition ? '+' : '-'}${_formatCurrency(transaction.amount)}',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                   ),
-                ),
-                title: Text(transaction.displayText),
-                subtitle: Text(
-                  transaction.category != null
-                      ? (transaction.isAddition
-                            ? 'Added to balance in category'
-                            : 'Subtracted from balance in category')
-                      : 'Description only',
-                ),
-                trailing: Text(
-                  '${transaction.isAddition ? '+' : '-'}${_formatCurrency(transaction.amount)}',
-                  style: Theme.of(context).textTheme.titleMedium,
+                );
+              },
+            ),
+            if (_transactions.length > _visibleTransactionCount)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: TextButton(
+                  onPressed: _loadMoreTransactions,
+                  child: const Text('Load more'),
                 ),
               ),
-            );
-          },
+          ],
         ),
     ]);
 
@@ -232,10 +257,14 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     if (!mounted) return;
 
+    final transactionLabel = transaction.category != null && transaction.description != null
+        ? '${transaction.category} — ${transaction.description}'
+        : transaction.category ?? transaction.description;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${_formatCurrency(transaction.amount)} in ${transaction.category ?? transaction.description}',
+          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${_formatCurrency(transaction.amount)} in $transactionLabel',
         ),
       ),
     );
@@ -617,7 +646,6 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
   final TextEditingController _descriptionController = TextEditingController();
   String _selectedSign = '+';
   String? _selectedCategory;
-  String _entryMode = 'category';
 
   @override
   void initState() {
@@ -636,32 +664,24 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
   void _submit() {
     final amount = int.tryParse(_amountController.text.trim());
 
-    String? category;
-    String? description;
-
-    if (_entryMode == 'category') {
-      category = _selectedCategory == '__custom__'
-          ? _customCategoryController.text.trim()
-          : _selectedCategory;
-      if (category == null || category.isEmpty) {
-        return;
-      }
-    } else {
-      description = _descriptionController.text.trim();
-      if (description.isEmpty) {
-        return;
-      }
-    }
+    final category = _selectedCategory == '__custom__'
+        ? _customCategoryController.text.trim()
+        : _selectedCategory;
+    final description = _descriptionController.text.trim();
 
     if (amount == null || amount <= 0) {
+      return;
+    }
+
+    if ((category == null || category.isEmpty) && description.isEmpty) {
       return;
     }
 
     Navigator.of(context).pop(
       TransactionEntry(
         amount: amount,
-        category: category,
-        description: description,
+        category: category?.isEmpty == true ? null : category,
+        description: description.isEmpty ? null : description,
         isAddition: _selectedSign == '+',
       ),
     );
@@ -678,40 +698,10 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Enter the amount and choose category or description.',
+                'Enter the amount and optionally add a category and description.',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 24),
-              Card(
-                elevation: 0,
-                child: Column(
-                  children: [
-                    RadioListTile<String>(
-                      value: 'category',
-                      groupValue: _entryMode,
-                      title: const Text('Category'),
-                      subtitle: const Text('Add it to your category list'),
-                      onChanged: (value) {
-                        setState(() {
-                          _entryMode = value ?? 'category';
-                        });
-                      },
-                    ),
-                    const Divider(height: 1),
-                    RadioListTile<String>(
-                      value: 'description',
-                      groupValue: _entryMode,
-                      title: const Text('Description'),
-                      subtitle: const Text('Save a free-text note without categorizing it'),
-                      onChanged: (value) {
-                        setState(() {
-                          _entryMode = value ?? 'category';
-                        });
-                      },
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 16),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -750,54 +740,52 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
                 ],
               ),
               const SizedBox(height: 16),
-              if (_entryMode == 'category') ...[
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedCategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Category',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: widget.categories
-                      .map(
-                        (category) => DropdownMenuItem<String>(
-                          value: category,
-                          child: Text(
-                            category == '__custom__'
-                                ? 'Custom category'
-                                : category,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedCategory = value;
-                    });
-                  },
+              DropdownButtonFormField<String>(
+                initialValue: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: 'Category (optional)',
+                  border: OutlineInputBorder(),
                 ),
-                if (_selectedCategory == '__custom__') ...[
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _customCategoryController,
-                    textInputAction: TextInputAction.done,
-                    decoration: const InputDecoration(
-                      labelText: 'Custom category',
-                      hintText: 'Enter category name',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ] else ...[
+                items: widget.categories
+                    .map(
+                      (category) => DropdownMenuItem<String>(
+                        value: category,
+                        child: Text(
+                          category == '__custom__'
+                              ? 'Custom category'
+                              : category,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _selectedCategory = value;
+                  });
+                },
+              ),
+              if (_selectedCategory == '__custom__') ...[
+                const SizedBox(height: 16),
                 TextField(
-                  controller: _descriptionController,
+                  controller: _customCategoryController,
                   textInputAction: TextInputAction.done,
                   decoration: const InputDecoration(
-                    labelText: 'Description',
-                    hintText: 'Enter anything associated with the transaction',
+                    labelText: 'Custom category',
+                    hintText: 'Enter category name',
                     border: OutlineInputBorder(),
                   ),
                 ),
               ],
+              const SizedBox(height: 16),
+              TextField(
+                controller: _descriptionController,
+                textInputAction: TextInputAction.done,
+                decoration: const InputDecoration(
+                  labelText: 'Description (optional)',
+                  hintText: 'Enter anything associated with the transaction',
+                  border: OutlineInputBorder(),
+                ),
+              ),
               const SizedBox(height: 24),
               FilledButton(
                 onPressed: _submit,
