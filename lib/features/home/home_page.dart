@@ -16,9 +16,11 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   int _balance = 0;
   final List<TransactionRecord> _transactions = <TransactionRecord>[];
   List<String> _categories = <String>['__custom__'];
+  List<BalancePoint> _weeklyBalancePoints = const <BalancePoint>[];
   bool _isLoading = true;
+  bool _isLoadingMoreTransactions = false;
+  bool _hasMoreTransactions = false;
   static const int _transactionsPageSize = 10;
-  int _visibleTransactionCount = _transactionsPageSize;
 
   @override
   void initState() {
@@ -27,7 +29,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   }
 
   Future<void> _loadSnapshot() async {
-    final snapshot = await widget.repository.loadSnapshot();
+    final snapshot = await widget.repository.loadSnapshot(
+      transactionLimit: _transactionsPageSize,
+    );
     if (!mounted) {
       return;
     }
@@ -38,8 +42,10 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
         ..clear()
         ..addAll(snapshot.transactions);
       _categories = <String>[...snapshot.categories, '__custom__'];
+      _weeklyBalancePoints = snapshot.weeklyBalancePoints;
+      _hasMoreTransactions = snapshot.hasMoreTransactions;
       _isLoading = false;
-      _visibleTransactionCount = _transactionsPageSize;
+      _isLoadingMoreTransactions = false;
     });
 
     await HomeWidget.saveWidgetData<int>('balance', _balance);
@@ -50,14 +56,29 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     await HomeWidget.updateWidget(name: 'MoneyManagerWidgetProvider');
   }
 
-  void _loadMoreTransactions() {
-    setState(() {
-      _visibleTransactionCount = (_visibleTransactionCount + _transactionsPageSize).clamp(0, _transactions.length);
-    });
-  }
+  Future<void> _loadMoreTransactions() async {
+    if (_isLoadingMoreTransactions || !_hasMoreTransactions || _transactions.isEmpty) {
+      return;
+    }
 
-  List<TransactionRecord> get _visibleTransactions {
-    return _transactions.take(_visibleTransactionCount).toList(growable: false);
+    setState(() {
+      _isLoadingMoreTransactions = true;
+    });
+
+    final olderTransactions = await widget.repository.loadMoreTransactions(
+      beforeTransaction: _transactions.last,
+      transactionLimit: _transactionsPageSize,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _transactions.addAll(olderTransactions.transactions);
+      _hasMoreTransactions = olderTransactions.hasMoreTransactions;
+      _isLoadingMoreTransactions = false;
+    });
   }
 
   String _buildWidgetTransactionHistory(List<TransactionRecord> transactions) {
@@ -126,7 +147,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     }
 
     children.addAll(<Widget>[
-      _BalanceChartCard(points: _buildWeeklyBalanceSeries()),
+      _BalanceChartCard(points: _weeklyBalancePoints),
       const SizedBox(height: 24),
       Text(
         'Transaction history',
@@ -138,43 +159,39 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
       else
         Column(
           children: [
-            ListView.separated(
-              itemCount: _visibleTransactions.length,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final transaction = _visibleTransactions[index];
-                return Card(
-                  elevation: 0,
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      child: Icon(
-                        transaction.isAddition ? Icons.add : Icons.remove,
-                      ),
-                    ),
-                    title: Text(transaction.displayText),
-                    subtitle: Text(
-                      transaction.category != null
-                          ? (transaction.isAddition
-                                ? 'Added to balance in category'
-                                : 'Subtracted from balance in category')
-                          : 'Description only',
-                    ),
-                    trailing: Text(
-                      '${transaction.isAddition ? '+' : '-'}${_formatCurrency(transaction.amount)}',
-                      style: Theme.of(context).textTheme.titleMedium,
+            for (var index = 0; index < _transactions.length; index++) ...[
+              Card(
+                elevation: 0,
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Icon(
+                      _transactions[index].isAddition ? Icons.add : Icons.remove,
                     ),
                   ),
-                );
-              },
-            ),
-            if (_transactions.length > _visibleTransactionCount)
+                  title: Text(_transactions[index].displayText),
+                  subtitle: Text(
+                    _transactions[index].category != null
+                        ? (_transactions[index].isAddition
+                              ? 'Added to balance in category'
+                              : 'Subtracted from balance in category')
+                        : 'Description only',
+                  ),
+                  trailing: Text(
+                    '${_transactions[index].isAddition ? '+' : '-'}${_formatCurrency(_transactions[index].amount)}',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+              ),
+              if (index < _transactions.length - 1) const SizedBox(height: 12),
+            ],
+            if (_hasMoreTransactions)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: TextButton(
-                  onPressed: _loadMoreTransactions,
-                  child: const Text('Load more'),
+                  onPressed: _isLoadingMoreTransactions ? null : _loadMoreTransactions,
+                  child: Text(
+                    _isLoadingMoreTransactions ? 'Loading more...' : 'Load more',
+                  ),
                 ),
               ),
           ],
@@ -182,55 +199,6 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     ]);
 
     return children;
-  }
-
-  List<_DailyBalancePoint> _buildWeeklyBalanceSeries() {
-    final today = DateTime.now();
-    final startDate = DateTime(
-      today.year,
-      today.month,
-      today.day,
-    ).subtract(const Duration(days: 6));
-    final orderedTransactions = _transactions.toList()
-      ..sort((first, second) => first.createdAt.compareTo(second.createdAt));
-
-    final points = <_DailyBalancePoint>[];
-    var runningBalance = 0;
-    var cursor = 0;
-
-    while (cursor < orderedTransactions.length &&
-        orderedTransactions[cursor].createdAt.toLocal().isBefore(startDate)) {
-      final transaction = orderedTransactions[cursor];
-      runningBalance += transaction.isAddition
-          ? transaction.amount
-          : -transaction.amount;
-      cursor++;
-    }
-
-    for (var offset = 0; offset < 7; offset++) {
-      final day = startDate.add(Duration(days: offset));
-      final nextDayStart = day.add(const Duration(days: 1));
-
-      while (cursor < orderedTransactions.length &&
-          orderedTransactions[cursor].createdAt.toLocal().isBefore(
-            nextDayStart,
-          )) {
-        final transaction = orderedTransactions[cursor];
-        runningBalance += transaction.isAddition
-            ? transaction.amount
-            : -transaction.amount;
-        cursor++;
-      }
-
-      points.add(
-        _DailyBalancePoint(
-          label: _weekdayLabel(day.weekday),
-          balance: runningBalance,
-        ),
-      );
-    }
-
-    return points;
   }
 
   Future<void> _openTransactionPage() async {
@@ -299,40 +267,12 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     final prefix = amount < 0 ? '-' : '';
     return '$prefix₱${amount.abs().toStringAsFixed(2)}';
   }
-
-  String _weekdayLabel(int weekday) {
-    switch (weekday) {
-      case DateTime.monday:
-        return 'Mon';
-      case DateTime.tuesday:
-        return 'Tue';
-      case DateTime.wednesday:
-        return 'Wed';
-      case DateTime.thursday:
-        return 'Thu';
-      case DateTime.friday:
-        return 'Fri';
-      case DateTime.saturday:
-        return 'Sat';
-      case DateTime.sunday:
-        return 'Sun';
-      default:
-        return '';
-    }
-  }
-}
-
-class _DailyBalancePoint {
-  const _DailyBalancePoint({required this.label, required this.balance});
-
-  final String label;
-  final int balance;
 }
 
 class _BalanceChartCard extends StatelessWidget {
   const _BalanceChartCard({required this.points});
 
-  final List<_DailyBalancePoint> points;
+  final List<BalancePoint> points;
 
   @override
   Widget build(BuildContext context) {
@@ -364,7 +304,7 @@ class _BalanceChartCard extends StatelessWidget {
 class _WeeklyBalanceLineChart extends StatefulWidget {
   const _WeeklyBalanceLineChart({required this.points});
 
-  final List<_DailyBalancePoint> points;
+  final List<BalancePoint> points;
 
   @override
   State<_WeeklyBalanceLineChart> createState() => _WeeklyBalanceLineChartState();
@@ -458,7 +398,7 @@ class _WeeklyBalanceLinePainter extends CustomPainter {
     required this.surfaceColor,
   });
 
-  final List<_DailyBalancePoint> points;
+  final List<BalancePoint> points;
   final int? selectedIndex;
   final Color color;
   final Color gridColor;
@@ -564,7 +504,7 @@ class _WeeklyBalanceChartGeometry {
 
   factory _WeeklyBalanceChartGeometry.fromSize({
     required Size size,
-    required List<_DailyBalancePoint> points,
+    required List<BalancePoint> points,
   }) {
     final chartRect = Rect.fromLTWH(12, 8, size.width - 24, size.height - 16);
     final minBalance = points.map((point) => point.balance).reduce((a, b) => a < b ? a : b);
@@ -589,7 +529,7 @@ class _WeeklyBalanceChartGeometry {
     return Offset(x, y);
   }
 
-  int nearestIndex(Offset localPosition, List<_DailyBalancePoint> points) {
+  int nearestIndex(Offset localPosition, List<BalancePoint> points) {
     var nearest = 0;
     var nearestDistance = double.infinity;
     for (var index = 0; index < points.length; index++) {
@@ -641,8 +581,7 @@ class TransactionEntryPage extends StatefulWidget {
 
 class _TransactionEntryPageState extends State<TransactionEntryPage> {
   final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _customCategoryController =
-      TextEditingController();
+  final TextEditingController _customCategoryController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   String _selectedSign = '+';
   String? _selectedCategory;

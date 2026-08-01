@@ -43,15 +43,41 @@ class MoneyManagerSnapshot {
     required this.balance,
     required this.transactions,
     required this.categories,
+    required this.hasMoreTransactions,
+    required this.weeklyBalancePoints,
   });
 
   final int balance;
   final List<TransactionRecord> transactions;
   final List<String> categories;
+  final bool hasMoreTransactions;
+  final List<BalancePoint> weeklyBalancePoints;
+}
+
+class BalancePoint {
+  const BalancePoint({required this.label, required this.balance});
+
+  final String label;
+  final int balance;
+}
+
+class TransactionPage {
+  const TransactionPage({
+    required this.transactions,
+    required this.hasMoreTransactions,
+  });
+
+  final List<TransactionRecord> transactions;
+  final bool hasMoreTransactions;
 }
 
 abstract class MoneyManagerRepository {
-  Future<MoneyManagerSnapshot> loadSnapshot();
+  Future<MoneyManagerSnapshot> loadSnapshot({int transactionLimit = 10});
+
+  Future<TransactionPage> loadMoreTransactions({
+    required TransactionRecord beforeTransaction,
+    int transactionLimit = 10,
+  });
 
   Future<void> addTransaction({
     required int amount,
@@ -102,36 +128,70 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
   }
 
   @override
-  Future<MoneyManagerSnapshot> loadSnapshot() async {
+  Future<MoneyManagerSnapshot> loadSnapshot({
+    int transactionLimit = 10,
+  }) async {
     final db = await _db;
     final categoryRows = await db.query('categories', orderBy: 'name ASC');
+    final balanceRows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS balance
+      FROM transactions
+      ''',
+    );
     final transactionRows = await db.query(
       'transactions',
       orderBy: 'created_at DESC, id DESC',
+      limit: transactionLimit + 1,
     );
 
-    final transactions = transactionRows
-        .map(
-          (row) => TransactionRecord(
-            id: row['id'] as int,
-            amount: row['amount'] as int,
-            category: row['category'] as String?,
-            description: row['description'] as String?,
-            isAddition: (row['is_addition'] as int) == 1,
-            createdAt: DateTime.parse(row['created_at'] as String),
-          ),
-        )
+    final hasMoreTransactions = transactionRows.length > transactionLimit;
+    final limitedRows = hasMoreTransactions
+        ? transactionRows.take(transactionLimit)
+        : transactionRows;
+
+    final transactions = limitedRows
+        .map(_transactionFromRow)
         .toList(growable: false);
 
-    final balance = transactions.fold<int>(
-      0,
-      (current, transaction) => current + (transaction.isAddition ? transaction.amount : -transaction.amount),
-    );
+    final weeklyBalancePoints = await _loadWeeklyBalancePoints(db);
 
     return MoneyManagerSnapshot(
-      balance: balance,
+      balance: (balanceRows.first['balance'] as int?) ?? 0,
       transactions: transactions,
       categories: categoryRows.map((row) => row['name'] as String).toList(growable: false),
+      hasMoreTransactions: hasMoreTransactions,
+      weeklyBalancePoints: weeklyBalancePoints,
+    );
+  }
+
+  @override
+  Future<TransactionPage> loadMoreTransactions({
+    required TransactionRecord beforeTransaction,
+    int transactionLimit = 10,
+  }) async {
+    final db = await _db;
+    final beforeCreatedAt = beforeTransaction.createdAt.toUtc().toIso8601String();
+    final transactionRows = await db.query(
+      'transactions',
+      where: '(created_at < ? OR (created_at = ? AND id < ?))',
+      whereArgs: <Object?>[
+        beforeCreatedAt,
+        beforeCreatedAt,
+        beforeTransaction.id,
+      ],
+      orderBy: 'created_at DESC, id DESC',
+      limit: transactionLimit + 1,
+    );
+
+    final hasMoreTransactions = transactionRows.length > transactionLimit;
+    final limitedRows = hasMoreTransactions
+        ? transactionRows.take(transactionLimit)
+        : transactionRows;
+
+    return TransactionPage(
+      transactions: limitedRows.map(_transactionFromRow).toList(growable: false),
+      hasMoreTransactions: hasMoreTransactions,
     );
   }
 
@@ -217,5 +277,89 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       FROM transactions_old
     ''');
     await database.execute('DROP TABLE transactions_old');
+  }
+
+  TransactionRecord _transactionFromRow(Map<String, Object?> row) {
+    return TransactionRecord(
+      id: row['id'] as int,
+      amount: row['amount'] as int,
+      category: row['category'] as String?,
+      description: row['description'] as String?,
+      isAddition: (row['is_addition'] as int) == 1,
+      createdAt: DateTime.parse(row['created_at'] as String),
+    );
+  }
+
+  Future<List<BalancePoint>> _loadWeeklyBalancePoints(Database db) async {
+    final today = DateTime.now().toUtc();
+    final startDate = DateTime.utc(today.year, today.month, today.day)
+        .subtract(const Duration(days: 6));
+    final endExclusive = startDate.add(const Duration(days: 7));
+
+    final balanceBeforeStartRows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS balance
+      FROM transactions
+      WHERE created_at < ?
+      ''',
+      <Object?>[startDate.toIso8601String()],
+    );
+    var runningBalance = (balanceBeforeStartRows.first['balance'] as int?) ?? 0;
+
+    final dailyRows = await db.rawQuery(
+      '''
+      SELECT substr(created_at, 1, 10) AS day,
+             COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS delta
+      FROM transactions
+      WHERE created_at >= ? AND created_at < ?
+      GROUP BY substr(created_at, 1, 10)
+      ORDER BY day ASC
+      ''',
+      <Object?>[
+        startDate.toIso8601String(),
+        endExclusive.toIso8601String(),
+      ],
+    );
+
+    final balanceByDay = <String, int>{};
+    for (final row in dailyRows) {
+      balanceByDay[row['day'] as String] = (row['delta'] as int?) ?? 0;
+    }
+
+    final points = <BalancePoint>[];
+    for (var offset = 0; offset < 7; offset++) {
+      final day = startDate.add(Duration(days: offset));
+      final dayKey = day.toIso8601String().substring(0, 10);
+      runningBalance += balanceByDay[dayKey] ?? 0;
+      points.add(
+        BalancePoint(
+          label: _weekdayLabel(day.weekday),
+          balance: runningBalance,
+        ),
+      );
+    }
+
+    return points;
+  }
+
+  String _weekdayLabel(int weekday) {
+    switch (weekday) {
+      case DateTime.monday:
+        return 'Mon';
+      case DateTime.tuesday:
+        return 'Tue';
+      case DateTime.wednesday:
+        return 'Wed';
+      case DateTime.thursday:
+        return 'Thu';
+      case DateTime.friday:
+        return 'Fri';
+      case DateTime.saturday:
+        return 'Sat';
+      case DateTime.sunday:
+        return 'Sun';
+      default:
+        return '';
+    }
   }
 }

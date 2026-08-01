@@ -12,3 +12,8 @@ NOTE: The Journal was created late
 - Updated `displayText` method in `money_manager_repository.dart` to display text appropriately when no category or description is provided.
 
 - Updated `widget_test.dart` test to test if the app can support optional category and optional tag.
+
+
+PROBLEM/Performance: I realized that the app loads all the transaction history from the database which might cause a performance issue when the data gets bigger.
+
+##
