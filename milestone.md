@@ -4,4 +4,6 @@
 
 - Can undo the history
 
+- Refactor the codebase
+
 - Add the Sweldo split feature
