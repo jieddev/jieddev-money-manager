@@ -16,4 +16,7 @@ NOTE: The Journal was created late
 
 PROBLEM/Performance: I realized that the app loads all the transaction history from the database which might cause a performance issue when the data gets bigger.
 
-##
+## Minimal refactor of codebase
+
+- run `/init` in Claude CLI.
+- Prompted Claude to refactor the codebase and follow SOLID Principle.

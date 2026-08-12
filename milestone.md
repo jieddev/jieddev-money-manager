@@ -7,3 +7,5 @@
 - Refactor the codebase
 
 - Add the Sweldo split feature
+
+- Add "Enter Initial balance" feature
