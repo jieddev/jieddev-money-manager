@@ -23,7 +23,7 @@ PROBLEM/Performance: I realized that the app loads all the transaction history f
 
 - Add notes in `CLAUDE.md` to let Claude know that I want it to use easy to understand code implementation without using complex over-engineered code.
 
-## Implement undo feature - Commit
+## Implement undo feature - Commit 0afc2c6af10a51f55a2
 
 - The undo feature aims to undo latest transaction entry via the snackbar button.
 
@@ -33,3 +33,14 @@ PROBLEM/Performance: I realized that the app loads all the transaction history f
   - Created a private `_undoTransaction` that takes `TransactionRecord transaction` parameter that calls `widget.repository.deleteTransaction` method to delete record from the database and reload snapshot of transactions.
 
 - Modified `widget_test.dart` to test undo feature.
+
+
+## Update home widget to be clickable - Commit
+
+- Modified `moneyManagerWidgetProvider.kt` to import `HomeWidgetLaunchIntent` and call `setOnClickPendingIntent`
+
+ERROR: "A failure occurred while executing org.jetbrains.kotlin.compilerRunner.btapi.BuildToolsApiCompilationWork Compilation error. See log for more details"
+
+REASON: `widget_root` is referenced in the Kotlin code but never defined in the layout.
+
+FIX: Add `android:id="@+id/widget_root` inside `money_manager_wiget.xml` to reference it.

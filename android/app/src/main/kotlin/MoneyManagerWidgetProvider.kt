@@ -5,6 +5,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.widget.RemoteViews
 import es.antonborri.home_widget.HomeWidgetPlugin
+import es.antonborri.home_widget.HomeWidgetLaunchIntent
 
 class MoneyManagerWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(
@@ -20,6 +21,14 @@ class MoneyManagerWidgetProvider : AppWidgetProvider() {
                 ?: "No transactions yet."
 
             val views = RemoteViews(context.packageName, R.layout.money_manager_widget).apply {
+                setOnClickPendingIntent(
+                  R.id.widget_root,
+                  HomeWidgetLaunchIntent.getActivity(
+                    context,
+                    MainActivity::class.java
+                  )
+                )
+
                 setTextViewText(R.id.widget_balance, formatCurrency(balance))
                 setTextViewText(R.id.widget_history, transactionHistory)
             }
