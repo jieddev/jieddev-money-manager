@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/currency_formatter.dart';
 import '../../data/money_manager_repository.dart';
+import 'enter_balance_dialog.dart';
 import 'home_widget_sync_service.dart';
 import 'transaction_entry_page.dart';
 import 'widgets/balance_chart_card.dart';
@@ -117,6 +118,12 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
             ),
           ),
           const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _openEnterBalanceDialog,
+              label: const Text('Set Balance'),
+            ),
+          ),
         ],
       ),
       const SizedBox(height: 24),
@@ -236,6 +243,43 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Transaction undone')),
+    );
+  }
+
+  Future<void> _openEnterBalanceDialog() async {
+    final newBalance = await showDialog<int>(
+      context: context,
+      builder: (context) => EnterBalanceDialog(currentBalance: _balance),
+    );
+    if (newBalance == null || !mounted) return;
+
+    final difference = newBalance - _balance;
+    if (difference == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Balance already matches')),
+      );
+      return;
+    }
+
+    final addedTransaction = await widget.repository.addTransaction(
+      amount: difference.abs(),
+      category: null,
+      description: 'Balance adjustment',
+      isAddition: difference > 0,
+    );
+
+    await _loadSnapshot();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Balance set to ${formatCurrency(newBalance)}'),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoTransaction(addedTransaction),
+        ),
+      ),
     );
   }
 

@@ -50,3 +50,4 @@ These already capture project history — consult them instead of re-deriving th
 
 ## NOTES
 - Use code that is easy to understand without using complex over-engineered code.
+- Do not update the JOURNAL.md markdown file.

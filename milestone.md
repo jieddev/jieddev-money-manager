@@ -6,7 +6,7 @@
 
 - Can undo the history ✅
 
+- Add "Enter Initial balance" feature ✅
 
 - Add the Sweldo split feature
 
-- Add "Enter Initial balance" feature

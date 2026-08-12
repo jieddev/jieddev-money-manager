@@ -35,7 +35,7 @@ PROBLEM/Performance: I realized that the app loads all the transaction history f
 - Modified `widget_test.dart` to test undo feature.
 
 
-## Update home widget to be clickable - Commit
+## Update home widget to be clickable - Commit 64cdab
 
 - Modified `moneyManagerWidgetProvider.kt` to import `HomeWidgetLaunchIntent` and call `setOnClickPendingIntent`
 
@@ -43,4 +43,11 @@ ERROR: "A failure occurred while executing org.jetbrains.kotlin.compilerRunner.b
 
 REASON: `widget_root` is referenced in the Kotlin code but never defined in the layout.
 
-FIX: Add `android:id="@+id/widget_root` inside `money_manager_wiget.xml` to reference it.
+FIX: Add `android:id="@+id/widget_root` inside `money_manager_widget.xml` to reference it.
+
+
+## Implement "Enter initial balance" feature
+
+- Created `enter_balance_dialog.dart` that accepts currentBalance and displays a dialog to input current balance.
+- Modified `home_page.dart` to add "Set Balance" button that calls `_openEnterBalanceDialog`.
+  - `_openEnterBalanceDialog` that shows the dialog, checks if the difference of new balance and current balance is equal to 0 or not, if not then it will add the transaction to the repository and reload snapshot and display a snackbar message.

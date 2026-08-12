@@ -269,4 +269,126 @@ void main() {
     expect(find.byType(ListTile), findsNWidgets(12));
     expect(find.widgetWithText(TextButton, 'Load more'), findsNothing);
   });
+
+  testWidgets('sets balance higher by recording an adjustment transaction',
+      (WidgetTester tester) async {
+    final repository = FakeMoneyManagerRepository(
+      initialSnapshot: const MoneyManagerSnapshot(
+        balance: 250,
+        transactions: <TransactionRecord>[],
+        categories: <String>['Bills', 'Entertainment', 'Food', 'Other', 'Savings', 'Transportation'],
+        hasMoreTransactions: false,
+        weeklyBalancePoints: <BalancePoint>[
+          BalancePoint(label: 'Mon', balance: 0),
+          BalancePoint(label: 'Tue', balance: 0),
+          BalancePoint(label: 'Wed', balance: 0),
+          BalancePoint(label: 'Thu', balance: 0),
+          BalancePoint(label: 'Fri', balance: 0),
+          BalancePoint(label: 'Sat', balance: 0),
+          BalancePoint(label: 'Sun', balance: 0),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(MyApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Set Balance'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '400');
+    await tester.tap(find.widgetWithText(FilledButton, 'Set Balance'));
+    // Avoid pumpAndSettle here: it pumps far enough to run past the
+    // SnackBar's auto-dismiss duration, hiding it before we can tap Undo.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(repository._snapshot.balance, 400);
+    expect(repository._snapshot.transactions.first.isAddition, isTrue);
+    expect(repository._snapshot.transactions.first.amount, 150);
+    expect(repository._snapshot.transactions.first.category, isNull);
+    expect(repository._snapshot.transactions.first.description, 'Balance adjustment');
+
+    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(repository._snapshot.balance, 250);
+    expect(repository._snapshot.transactions, isEmpty);
+  });
+
+  testWidgets('sets balance lower by recording an adjustment transaction',
+      (WidgetTester tester) async {
+    final repository = FakeMoneyManagerRepository(
+      initialSnapshot: const MoneyManagerSnapshot(
+        balance: 250,
+        transactions: <TransactionRecord>[],
+        categories: <String>['Bills', 'Entertainment', 'Food', 'Other', 'Savings', 'Transportation'],
+        hasMoreTransactions: false,
+        weeklyBalancePoints: <BalancePoint>[
+          BalancePoint(label: 'Mon', balance: 0),
+          BalancePoint(label: 'Tue', balance: 0),
+          BalancePoint(label: 'Wed', balance: 0),
+          BalancePoint(label: 'Thu', balance: 0),
+          BalancePoint(label: 'Fri', balance: 0),
+          BalancePoint(label: 'Sat', balance: 0),
+          BalancePoint(label: 'Sun', balance: 0),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(MyApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Set Balance'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '100');
+    await tester.tap(find.widgetWithText(FilledButton, 'Set Balance'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(repository._snapshot.balance, 100);
+    expect(repository._snapshot.transactions.first.isAddition, isFalse);
+    expect(repository._snapshot.transactions.first.amount, 150);
+  });
+
+  testWidgets('entering the current balance does not record a transaction',
+      (WidgetTester tester) async {
+    final repository = FakeMoneyManagerRepository(
+      initialSnapshot: const MoneyManagerSnapshot(
+        balance: 250,
+        transactions: <TransactionRecord>[],
+        categories: <String>['Bills', 'Entertainment', 'Food', 'Other', 'Savings', 'Transportation'],
+        hasMoreTransactions: false,
+        weeklyBalancePoints: <BalancePoint>[
+          BalancePoint(label: 'Mon', balance: 0),
+          BalancePoint(label: 'Tue', balance: 0),
+          BalancePoint(label: 'Wed', balance: 0),
+          BalancePoint(label: 'Thu', balance: 0),
+          BalancePoint(label: 'Fri', balance: 0),
+          BalancePoint(label: 'Sat', balance: 0),
+          BalancePoint(label: 'Sun', balance: 0),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(MyApp(repository: repository));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Set Balance'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '250');
+    await tester.tap(find.widgetWithText(FilledButton, 'Set Balance'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(repository._snapshot.balance, 250);
+    expect(repository._snapshot.transactions, isEmpty);
+    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsNothing);
+    expect(find.text('Balance already matches'), findsOneWidget);
+  });
 }
