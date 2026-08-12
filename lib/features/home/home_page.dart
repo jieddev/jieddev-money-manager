@@ -200,7 +200,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     if (transaction == null || !mounted) return;
 
-    await widget.repository.addTransaction(
+    final addedTransaction = await widget.repository.addTransaction(
       amount: transaction.amount,
       category: transaction.category,
       description: transaction.description,
@@ -220,7 +220,22 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
         content: Text(
           '${transaction.isAddition ? 'Added' : 'Subtracted'} ${formatCurrency(transaction.amount)} in $transactionLabel',
         ),
+        action: SnackBarAction(
+          label: 'Undo',
+          onPressed: () => _undoTransaction(addedTransaction),
+        ),
       ),
+    );
+  }
+
+  Future<void> _undoTransaction(TransactionRecord transaction) async {
+    await widget.repository.deleteTransaction(transaction.id);
+    await _loadSnapshot();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Transaction undone')),
     );
   }
 

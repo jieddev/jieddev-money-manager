@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:jieddev_money_manager/data/money_manager_repository.dart';
 import 'package:jieddev_money_manager/main.dart';
+
+// The app syncs to the home screen widget through this platform channel on
+// every load/mutation. Without a mock handler the call never resolves in a
+// widget test (there's no platform on the other end), which stalls anything
+// awaiting `_loadSnapshot()` — including the SnackBar shown after a save.
+const _homeWidgetChannel = MethodChannel('home_widget');
 
 class FakeMoneyManagerRepository implements MoneyManagerRepository {
   FakeMoneyManagerRepository({MoneyManagerSnapshot? initialSnapshot})
@@ -28,15 +35,17 @@ class FakeMoneyManagerRepository implements MoneyManagerRepository {
 
   List<TransactionRecord> get _allTransactions => _snapshot.transactions;
 
+  int _nextId = 1000;
+
   @override
-  Future<void> addTransaction({
+  Future<TransactionRecord> addTransaction({
     required int amount,
     String? category,
     String? description,
     required bool isAddition,
   }) async {
     final transaction = TransactionRecord(
-      id: _snapshot.transactions.length + 1,
+      id: _nextId++,
       amount: amount,
       category: category,
       description: description,
@@ -54,6 +63,22 @@ class FakeMoneyManagerRepository implements MoneyManagerRepository {
       transactions: <TransactionRecord>[transaction, ..._allTransactions],
       categories: updatedCategories,
       hasMoreTransactions: false,
+      weeklyBalancePoints: _snapshot.weeklyBalancePoints,
+    );
+
+    return transaction;
+  }
+
+  @override
+  Future<void> deleteTransaction(int id) async {
+    final transaction = _allTransactions.firstWhere((t) => t.id == id);
+    final updatedBalance = _snapshot.balance - (transaction.isAddition ? transaction.amount : -transaction.amount);
+
+    _snapshot = MoneyManagerSnapshot(
+      balance: updatedBalance,
+      transactions: _allTransactions.where((t) => t.id != id).toList(growable: false),
+      categories: _snapshot.categories,
+      hasMoreTransactions: _snapshot.hasMoreTransactions,
       weeklyBalancePoints: _snapshot.weeklyBalancePoints,
     );
   }
@@ -108,6 +133,16 @@ class FakeMoneyManagerRepository implements MoneyManagerRepository {
 }
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_homeWidgetChannel, (MethodCall call) async => null);
+  });
+
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(_homeWidgetChannel, null);
+  });
+
   testWidgets('loads persisted data and saves new transactions',
       (WidgetTester tester) async {
     final repository = FakeMoneyManagerRepository(
@@ -160,12 +195,25 @@ void main() {
 
     await tester.enterText(find.byType(TextField).last, 'Lunch with client');
     await tester.tap(find.widgetWithText(FilledButton, 'Update balance'));
-    await tester.pumpAndSettle();
+    // Avoid pumpAndSettle here: it pumps far enough to run past the
+    // SnackBar's auto-dismiss duration, hiding it before we can tap Undo.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
 
     expect(repository._snapshot.transactions.first.description, 'Lunch with client');
     expect(repository._snapshot.transactions.first.category, 'Food');
     expect(repository._snapshot.categories.contains('Lunch with client'), isFalse);
     expect(repository._snapshot.balance, 300);
+
+    expect(find.widgetWithText(SnackBarAction, 'Undo'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SnackBarAction, 'Undo'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(repository._snapshot.balance, 250);
+    expect(repository._snapshot.transactions, hasLength(1));
+    expect(find.textContaining('₱250'), findsWidgets);
   });
 
   testWidgets('loads only the latest 10 transactions and pages older ones on demand',

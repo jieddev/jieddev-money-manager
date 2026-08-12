@@ -47,3 +47,6 @@ These already capture project history — consult them instead of re-deriving th
 ## Project Philosophy
 - Separate classes and functions into separate file if possible.
 - Ensure SOLID Principle.
+
+## NOTES
+- Use code that is easy to understand without using complex over-engineered code.

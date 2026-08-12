@@ -79,12 +79,14 @@ abstract class MoneyManagerRepository {
     int transactionLimit = 10,
   });
 
-  Future<void> addTransaction({
+  Future<TransactionRecord> addTransaction({
     required int amount,
     String? category,
     String? description,
     required bool isAddition,
   });
+
+  Future<void> deleteTransaction(int id);
 }
 
 class SqliteMoneyManagerRepository implements MoneyManagerRepository {
@@ -196,7 +198,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
   }
 
   @override
-  Future<void> addTransaction({
+  Future<TransactionRecord> addTransaction({
     required int amount,
     String? category,
     String? description,
@@ -208,14 +210,15 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     }
 
     final db = await _db;
-    await db.insert(
+    final createdAt = DateTime.now().toUtc();
+    final id = await db.insert(
       'transactions',
       <String, Object?>{
         'amount': amount,
         'category': category,
         'description': description,
         'is_addition': isAddition ? 1 : 0,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
+        'created_at': createdAt.toIso8601String(),
       },
     );
 
@@ -226,6 +229,21 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
+
+    return TransactionRecord(
+      id: id,
+      amount: amount,
+      category: category,
+      description: description,
+      isAddition: isAddition,
+      createdAt: createdAt,
+    );
+  }
+
+  @override
+  Future<void> deleteTransaction(int id) async {
+    final db = await _db;
+    await db.delete('transactions', where: 'id = ?', whereArgs: <Object?>[id]);
   }
 
   Future<void> _createSchema(Database database) async {

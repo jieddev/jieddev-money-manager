@@ -2,9 +2,10 @@
 
 - Change the toggle between description and category and instead users can optionally pick a description and add a category at the same time ✅
 
-- Can undo the history
+- Refactor the codebase ✅
 
-- Refactor the codebase
+- Can undo the history ✅
+
 
 - Add the Sweldo split feature
 
