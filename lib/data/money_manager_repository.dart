@@ -9,6 +9,7 @@ class TransactionRecord {
     required this.description,
     required this.isAddition,
     required this.createdAt,
+    this.isSavings = false,
   });
 
   final int id;
@@ -17,6 +18,7 @@ class TransactionRecord {
   final String? description;
   final bool isAddition;
   final DateTime createdAt;
+  final bool isSavings;
 
   String get displayText {
     final hasCategory = category != null && category!.isNotEmpty;
@@ -45,6 +47,7 @@ class MoneyManagerSnapshot {
     required this.categories,
     required this.hasMoreTransactions,
     required this.weeklyBalancePoints,
+    this.savingsBalance = 0,
   });
 
   final int balance;
@@ -52,6 +55,7 @@ class MoneyManagerSnapshot {
   final List<String> categories;
   final bool hasMoreTransactions;
   final List<BalancePoint> weeklyBalancePoints;
+  final int savingsBalance;
 }
 
 class BalancePoint {
@@ -84,9 +88,23 @@ abstract class MoneyManagerRepository {
     String? category,
     String? description,
     required bool isAddition,
+    bool allowSplit = true,
+    bool isSavings = false,
   });
 
   Future<void> deleteTransaction(int id);
+
+  Future<TransactionRecord> updateTransaction({
+    required int id,
+    required int amount,
+    String? category,
+    String? description,
+    required bool isAddition,
+  });
+
+  Future<bool> loadSaveTenPercentEnabled();
+
+  Future<void> setSaveTenPercentEnabled(bool enabled);
 }
 
 class SqliteMoneyManagerRepository implements MoneyManagerRepository {
@@ -95,6 +113,8 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
 
   final String _databaseName;
   Database? _database;
+
+  static const String _saveTenPercentSettingKey = 'save_ten_percent_enabled';
 
   static const List<String> _defaultCategories = <String>[
     'Food',
@@ -114,13 +134,16 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     final databasesPath = await getDatabasesPath();
     final db = await openDatabase(
       path.join(databasesPath, _databaseName),
-      version: 2,
+      version: 3,
       onCreate: (database, version) async {
         await _createSchema(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _migrateTransactionsToDescriptionAwareSchema(database);
+        }
+        if (oldVersion < 3) {
+          await _addSavingsSupport(database);
         }
       },
     );
@@ -139,6 +162,14 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       '''
       SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS balance
       FROM transactions
+      WHERE is_savings = 0
+      ''',
+    );
+    final savingsBalanceRows = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS savings_balance
+      FROM transactions
+      WHERE is_savings = 1
       ''',
     );
     final transactionRows = await db.query(
@@ -164,6 +195,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       categories: categoryRows.map((row) => row['name'] as String).toList(growable: false),
       hasMoreTransactions: hasMoreTransactions,
       weeklyBalancePoints: weeklyBalancePoints,
+      savingsBalance: (savingsBalanceRows.first['savings_balance'] as int?) ?? 0,
     );
   }
 
@@ -203,6 +235,8 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     String? category,
     String? description,
     required bool isAddition,
+    bool allowSplit = true,
+    bool isSavings = false,
   }) async {
     if ((category == null || category.isEmpty) &&
         (description == null || description.isEmpty)) {
@@ -211,15 +245,108 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
 
     final db = await _db;
     final createdAt = DateTime.now().toUtc();
-    final id = await db.insert(
+
+    final shouldAttemptSplit = !isSavings && isAddition && allowSplit && amount > 0;
+    final savingsCut = shouldAttemptSplit ? (amount * 10) ~/ 100 : 0;
+    final isSplitting = savingsCut > 0 && await _isSaveTenPercentEnabled(db);
+    final mainAmount = isSplitting ? amount - savingsCut : amount;
+
+    final mainId = await db.insert(
+      'transactions',
+      <String, Object?>{
+        'amount': mainAmount,
+        'category': category,
+        'description': description,
+        'is_addition': isAddition ? 1 : 0,
+        'created_at': createdAt.toIso8601String(),
+        'is_savings': isSavings ? 1 : 0,
+        'linked_transaction_id': null,
+      },
+    );
+
+    if (isSplitting) {
+      await db.insert(
+        'transactions',
+        <String, Object?>{
+          'amount': savingsCut,
+          'category': category,
+          'description': description,
+          'is_addition': 1,
+          'created_at': createdAt.toIso8601String(),
+          'is_savings': 1,
+          'linked_transaction_id': mainId,
+        },
+      );
+    }
+
+    if (category != null && category.isNotEmpty) {
+      await db.insert(
+        'categories',
+        <String, Object?>{'name': category},
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+
+    return TransactionRecord(
+      id: mainId,
+      amount: mainAmount,
+      category: category,
+      description: description,
+      isAddition: isAddition,
+      createdAt: createdAt,
+      isSavings: isSavings,
+    );
+  }
+
+  @override
+  Future<void> deleteTransaction(int id) async {
+    final db = await _db;
+    await db.delete(
+      'transactions',
+      where: '''
+        id = ?
+        OR linked_transaction_id = ?
+        OR id = (SELECT linked_transaction_id FROM transactions WHERE id = ?)
+      ''',
+      whereArgs: <Object?>[id, id, id],
+    );
+  }
+
+  @override
+  Future<TransactionRecord> updateTransaction({
+    required int id,
+    required int amount,
+    String? category,
+    String? description,
+    required bool isAddition,
+  }) async {
+    if ((category == null || category.isEmpty) &&
+        (description == null || description.isEmpty)) {
+      throw ArgumentError('Either category or description must be provided.');
+    }
+
+    final db = await _db;
+    final rows = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Transaction $id not found.');
+    }
+    final existing = _transactionFromRow(rows.first);
+
+    await db.update(
       'transactions',
       <String, Object?>{
         'amount': amount,
         'category': category,
         'description': description,
         'is_addition': isAddition ? 1 : 0,
-        'created_at': createdAt.toIso8601String(),
       },
+      where: 'id = ?',
+      whereArgs: <Object?>[id],
     );
 
     if (category != null && category.isNotEmpty) {
@@ -236,14 +363,38 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       category: category,
       description: description,
       isAddition: isAddition,
-      createdAt: createdAt,
+      createdAt: existing.createdAt,
+      isSavings: existing.isSavings,
     );
   }
 
   @override
-  Future<void> deleteTransaction(int id) async {
+  Future<bool> loadSaveTenPercentEnabled() async {
     final db = await _db;
-    await db.delete('transactions', where: 'id = ?', whereArgs: <Object?>[id]);
+    return _isSaveTenPercentEnabled(db);
+  }
+
+  @override
+  Future<void> setSaveTenPercentEnabled(bool enabled) async {
+    final db = await _db;
+    await db.insert(
+      'settings',
+      <String, Object?>{
+        'key': _saveTenPercentSettingKey,
+        'value': enabled ? '1' : '0',
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<bool> _isSaveTenPercentEnabled(Database db) async {
+    final rows = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: <Object?>[_saveTenPercentSettingKey],
+      limit: 1,
+    );
+    return rows.isNotEmpty && rows.first['value'] == '1';
   }
 
   Future<void> _createSchema(Database database) async {
@@ -260,7 +411,15 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
         category TEXT,
         description TEXT,
         is_addition INTEGER NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        is_savings INTEGER NOT NULL DEFAULT 0,
+        linked_transaction_id INTEGER
+      )
+    ''');
+    await database.execute('''
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
       )
     ''');
 
@@ -297,6 +456,21 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     await database.execute('DROP TABLE transactions_old');
   }
 
+  Future<void> _addSavingsSupport(Database database) async {
+    await database.execute(
+      'ALTER TABLE transactions ADD COLUMN is_savings INTEGER NOT NULL DEFAULT 0',
+    );
+    await database.execute(
+      'ALTER TABLE transactions ADD COLUMN linked_transaction_id INTEGER',
+    );
+    await database.execute('''
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
+  }
+
   TransactionRecord _transactionFromRow(Map<String, Object?> row) {
     return TransactionRecord(
       id: row['id'] as int,
@@ -305,6 +479,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       description: row['description'] as String?,
       isAddition: (row['is_addition'] as int) == 1,
       createdAt: DateTime.parse(row['created_at'] as String),
+      isSavings: (row['is_savings'] as int? ?? 0) == 1,
     );
   }
 
@@ -318,7 +493,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       '''
       SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS balance
       FROM transactions
-      WHERE created_at < ?
+      WHERE created_at < ? AND is_savings = 0
       ''',
       <Object?>[startDate.toIso8601String()],
     );
@@ -329,7 +504,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       SELECT substr(created_at, 1, 10) AS day,
              COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS delta
       FROM transactions
-      WHERE created_at >= ? AND created_at < ?
+      WHERE created_at >= ? AND created_at < ? AND is_savings = 0
       GROUP BY substr(created_at, 1, 10)
       ORDER BY day ASC
       ''',

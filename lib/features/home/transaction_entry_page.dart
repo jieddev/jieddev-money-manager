@@ -20,11 +20,13 @@ class TransactionEntryPage extends StatefulWidget {
     required this.title,
     required this.categories,
     required this.actionLabel,
+    this.initialEntry,
   });
 
   final String title;
   final List<String> categories;
   final String actionLabel;
+  final TransactionEntry? initialEntry;
 
   @override
   State<TransactionEntryPage> createState() => _TransactionEntryPageState();
@@ -40,7 +42,26 @@ class _TransactionEntryPageState extends State<TransactionEntryPage> {
   @override
   void initState() {
     super.initState();
-    _selectedCategory = widget.categories.first;
+
+    final initialEntry = widget.initialEntry;
+    if (initialEntry == null) {
+      _selectedCategory = widget.categories.first;
+      return;
+    }
+
+    _selectedSign = initialEntry.isAddition ? '+' : '-';
+    _amountController.text = initialEntry.amount.toString();
+    _descriptionController.text = initialEntry.description ?? '';
+
+    if (initialEntry.category != null &&
+        widget.categories.contains(initialEntry.category)) {
+      _selectedCategory = initialEntry.category;
+    } else if (initialEntry.category != null) {
+      _selectedCategory = '__custom__';
+      _customCategoryController.text = initialEntry.category!;
+    } else {
+      _selectedCategory = widget.categories.first;
+    }
   }
 
   @override

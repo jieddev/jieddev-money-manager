@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/currency_formatter.dart';
+import '../../core/date_formatter.dart';
 import '../../data/money_manager_repository.dart';
 import 'enter_balance_dialog.dart';
 import 'home_widget_sync_service.dart';
@@ -20,6 +21,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   final HomeWidgetSyncService _widgetSyncService = HomeWidgetSyncService();
 
   int _balance = 0;
+  int _savingsBalance = 0;
   final List<TransactionRecord> _transactions = <TransactionRecord>[];
   List<String> _categories = <String>['__custom__'];
   List<BalancePoint> _weeklyBalancePoints = const <BalancePoint>[];
@@ -44,6 +46,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     setState(() {
       _balance = snapshot.balance;
+      _savingsBalance = snapshot.savingsBalance;
       _transactions
         ..clear()
         ..addAll(snapshot.transactions);
@@ -58,7 +61,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   }
 
   Future<void> _loadMoreTransactions() async {
-    if (_isLoadingMoreTransactions || !_hasMoreTransactions || _transactions.isEmpty) {
+    if (_isLoadingMoreTransactions ||
+        !_hasMoreTransactions ||
+        _transactions.isEmpty) {
       return;
     }
 
@@ -108,6 +113,12 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
           ),
         ),
       ),
+      const SizedBox(height: 12),
+      Text(
+        'Savings: ${formatCurrency(_savingsBalance)}',
+        textAlign: TextAlign.start,
+        style: Theme.of(context).textTheme.titleSmall,
+      ),
       const SizedBox(height: 24),
       Row(
         children: [
@@ -155,23 +166,51 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
             for (var index = 0; index < _transactions.length; index++) ...[
               Card(
                 elevation: 0,
+                color: _transactions[index].isSavings
+                    ? Colors.green.withValues(alpha: 0.12)
+                    : null,
                 child: ListTile(
                   leading: CircleAvatar(
                     child: Icon(
-                      _transactions[index].isAddition ? Icons.add : Icons.remove,
+                      _transactions[index].isAddition
+                          ? Icons.add
+                          : Icons.remove,
                     ),
                   ),
-                  title: Text(_transactions[index].displayText),
-                  subtitle: Text(
-                    _transactions[index].category != null
-                        ? (_transactions[index].isAddition
-                              ? 'Added to balance in category'
-                              : 'Subtracted from balance in category')
-                        : 'Description only',
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_transactions[index].isAddition ? '+' : '-'}${formatCurrency(_transactions[index].amount)}',
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(
+                              color: _transactions[index].isAddition
+                                  ? Colors.green[700]
+                                  : Colors.red[700],
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      Text(_transactions[index].displayText),
+                    ],
                   ),
-                  trailing: Text(
-                    '${_transactions[index].isAddition ? '+' : '-'}${formatCurrency(_transactions[index].amount)}',
-                    style: Theme.of(context).textTheme.titleMedium,
+                  subtitle: Text(formatDate(_transactions[index].createdAt)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        tooltip: 'Edit',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _editTransaction(_transactions[index]),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        tooltip: 'Delete',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () =>
+                            _deleteTransaction(_transactions[index]),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -181,9 +220,13 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: TextButton(
-                  onPressed: _isLoadingMoreTransactions ? null : _loadMoreTransactions,
+                  onPressed: _isLoadingMoreTransactions
+                      ? null
+                      : _loadMoreTransactions,
                   child: Text(
-                    _isLoadingMoreTransactions ? 'Loading more...' : 'Load more',
+                    _isLoadingMoreTransactions
+                        ? 'Loading more...'
+                        : 'Load more',
                   ),
                 ),
               ),
@@ -207,7 +250,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     if (transaction == null || !mounted) return;
 
-    final addedTransaction = await widget.repository.addTransaction(
+    await widget.repository.addTransaction(
       amount: transaction.amount,
       category: transaction.category,
       description: transaction.description,
@@ -218,7 +261,8 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     if (!mounted) return;
 
-    final transactionLabel = transaction.category != null && transaction.description != null
+    final transactionLabel =
+        transaction.category != null && transaction.description != null
         ? '${transaction.category} — ${transaction.description}'
         : transaction.category ?? transaction.description;
 
@@ -227,22 +271,48 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
         content: Text(
           '${transaction.isAddition ? 'Added' : 'Subtracted'} ${formatCurrency(transaction.amount)} in $transactionLabel',
         ),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () => _undoTransaction(addedTransaction),
-        ),
       ),
     );
   }
 
-  Future<void> _undoTransaction(TransactionRecord transaction) async {
-    await widget.repository.deleteTransaction(transaction.id);
+  Future<void> _openSavingsEntryPage() async {
+    final transaction = await Navigator.of(context).push<TransactionEntry>(
+      MaterialPageRoute(
+        builder: (context) => TransactionEntryPage(
+          title: 'Savings',
+          categories: _categories,
+          actionLabel: 'Update savings',
+        ),
+      ),
+    );
+
+    if (transaction == null || !mounted) return;
+
+    await widget.repository.addTransaction(
+      amount: transaction.amount,
+      category: transaction.category,
+      description: transaction.description,
+      isAddition: transaction.isAddition,
+      allowSplit: false,
+      isSavings: true,
+    );
+
     await _loadSnapshot();
 
     if (!mounted) return;
 
+    final transactionLabel =
+        transaction.category != null && transaction.description != null
+        ? '${transaction.category} — ${transaction.description}'
+        : transaction.category ?? transaction.description;
+
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Transaction undone')),
+      SnackBar(
+        content: Text(
+          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${formatCurrency(transaction.amount)} '
+          '${transaction.isAddition ? 'to' : 'from'} savings${transactionLabel != null ? ' in $transactionLabel' : ''}',
+        ),
+      ),
     );
   }
 
@@ -255,17 +325,18 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     final difference = newBalance - _balance;
     if (difference == 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Balance already matches')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Balance already matches')));
       return;
     }
 
-    final addedTransaction = await widget.repository.addTransaction(
+    await widget.repository.addTransaction(
       amount: difference.abs(),
       category: null,
       description: 'Balance adjustment',
       isAddition: difference > 0,
+      allowSplit: false,
     );
 
     await _loadSnapshot();
@@ -273,14 +344,77 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Balance set to ${formatCurrency(newBalance)}'),
-        action: SnackBarAction(
-          label: 'Undo',
-          onPressed: () => _undoTransaction(addedTransaction),
+      SnackBar(content: Text('Balance set to ${formatCurrency(newBalance)}')),
+    );
+  }
+
+  Future<void> _editTransaction(TransactionRecord transaction) async {
+    final updated = await Navigator.of(context).push<TransactionEntry>(
+      MaterialPageRoute(
+        builder: (context) => TransactionEntryPage(
+          title: 'Edit transaction',
+          categories: _categories,
+          actionLabel: 'Save',
+          initialEntry: TransactionEntry(
+            amount: transaction.amount,
+            category: transaction.category,
+            description: transaction.description,
+            isAddition: transaction.isAddition,
+          ),
         ),
       ),
     );
+
+    if (updated == null || !mounted) return;
+
+    await widget.repository.updateTransaction(
+      id: transaction.id,
+      amount: updated.amount,
+      category: updated.category,
+      description: updated.description,
+      isAddition: updated.isAddition,
+    );
+
+    await _loadSnapshot();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Transaction updated')));
+  }
+
+  Future<void> _deleteTransaction(TransactionRecord transaction) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete transaction?'),
+        content: Text(
+          'This will remove "${transaction.displayText}" and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    await widget.repository.deleteTransaction(transaction.id);
+    await _loadSnapshot();
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Transaction deleted')));
   }
 
   @override
