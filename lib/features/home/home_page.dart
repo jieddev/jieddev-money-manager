@@ -4,6 +4,7 @@ import '../../core/currency_formatter.dart';
 import '../../core/date_formatter.dart';
 import '../../data/money_manager_repository.dart';
 import 'enter_balance_dialog.dart';
+import 'envelope_transaction_page.dart';
 import 'home_widget_sync_service.dart';
 import 'transaction_entry_page.dart';
 import 'widgets/balance_chart_card.dart';
@@ -22,6 +23,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
   int _balance = 0;
   int _savingsBalance = 0;
+  int _needsBalance = 0;
+  int _rewardFundBalance = 0;
+  int _emergencyFundBalance = 0;
   final List<TransactionRecord> _transactions = <TransactionRecord>[];
   List<String> _categories = <String>['__custom__'];
   List<BalancePoint> _weeklyBalancePoints = const <BalancePoint>[];
@@ -47,6 +51,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     setState(() {
       _balance = snapshot.balance;
       _savingsBalance = snapshot.savingsBalance;
+      _needsBalance = snapshot.needsBalance;
+      _rewardFundBalance = snapshot.rewardFundBalance;
+      _emergencyFundBalance = snapshot.emergencyFundBalance;
       _transactions
         ..clear()
         ..addAll(snapshot.transactions);
@@ -103,67 +110,25 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
           child: Column(
             children: [
               Text(
-                formatCurrency(_balance),
+                formatCurrency(_balance + _needsBalance + _rewardFundBalance + _savingsBalance + _emergencyFundBalance),
                 textAlign: TextAlign.center,
                 style: Theme.of(
                   context,
                 ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
               ),
+
+              SizedBox(height: 30,),
+
+              Row(
+                children: [
+                  Text("Spare Balance: ${formatCurrency(_balance)}"),
+                ],
+              ),
             ],
           ),
         ),
       ),
-      const SizedBox(height: 12),
-      Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          color: Colors.grey,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            GestureDetector(
-              child: Column(
-                children: [
-                  Text('Needs (40%)'),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
-                ],
-              ),
-            ),
-            SizedBox(height: 20,),
-            GestureDetector(
-              child: Column(
-                children: [
-                  Text('Reward Fund/Wants (20%)'),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
-                ],
-              ),
-            ),
-            SizedBox(height: 20,),
-            GestureDetector(
-              onTap: _openSavingsEntryPage,
-              child: Column(
-                children: [
-                  Text('Savings (30%)'),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text(formatCurrency(_savingsBalance)), Text("50, 000.00 Max/Year")]),
-                ],
-              ),
-            ),
-            SizedBox(height: 20,),
-            GestureDetector(
-              child: Column(
-                children: [
-                  Text('Emergency Fund (10%)'),
-                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
-                ],
-              ),
-              onTap: () => debugPrint("Tapped Emergency Fund"),
-            ),
-            SizedBox(height: 20,),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
+      const SizedBox(height: 3),
       Row(
         children: [
           Expanded(
@@ -180,6 +145,98 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
             ),
           ),
         ],
+      ),
+      const SizedBox(height: 24),
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.black),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            GestureDetector(
+              onTap: () => _openEnvelopeEntryPage(Envelope.needs),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Needs (40%)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatCurrency(_needsBalance)),
+                      Text("50, 000.00 Max/Year"),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 20),
+            GestureDetector(
+              onTap: () => _openEnvelopeEntryPage(Envelope.savings),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Savings (30%)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatCurrency(_savingsBalance)),
+                      Text("50, 000.00 Max/Year"),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 20),
+            GestureDetector(
+              onTap: () => _openEnvelopeEntryPage(Envelope.rewardFund),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Reward Fund/Wants (20%)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatCurrency(_rewardFundBalance)),
+                      Text("50, 000.00 Max/Year"),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 20),
+            GestureDetector(
+              onTap: () => _openEnvelopeEntryPage(Envelope.emergencyFund),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Emergency Fund (10%)',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(formatCurrency(_emergencyFundBalance)),
+                      Text("50, 000.00 Max/Year"),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 20),
+          ],
+        ),
       ),
       const SizedBox(height: 24),
     ];
@@ -210,17 +267,8 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
             for (var index = 0; index < _transactions.length; index++) ...[
               Card(
                 elevation: 0,
-                color: _transactions[index].isSavings
-                    ? Colors.green.withValues(alpha: 0.12)
-                    : null,
                 child: ListTile(
-                  leading: CircleAvatar(
-                    child: Icon(
-                      _transactions[index].isAddition
-                          ? Icons.add
-                          : Icons.remove,
-                    ),
-                  ),
+                  leading: CircleAvatar(),
                   title: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -319,13 +367,20 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     );
   }
 
-  Future<void> _openSavingsEntryPage() async {
+  int _balanceFor(Envelope envelope) => switch (envelope) {
+    Envelope.savings => _savingsBalance,
+    Envelope.needs => _needsBalance,
+    Envelope.rewardFund => _rewardFundBalance,
+    Envelope.emergencyFund => _emergencyFundBalance,
+  };
+
+  Future<void> _openEnvelopeEntryPage(Envelope envelope) async {
     final transaction = await Navigator.of(context).push<TransactionEntry>(
       MaterialPageRoute(
-        builder: (context) => TransactionEntryPage(
-          title: 'Savings',
-          categories: _categories,
-          actionLabel: 'Update savings',
+        builder: (context) => EnvelopeTransactionPage(
+          envelope: envelope,
+          envelopeBalance: _balanceFor(envelope),
+          overallBalance: _balance,
         ),
       ),
     );
@@ -334,10 +389,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     await widget.repository.addTransaction(
       amount: transaction.amount,
-      category: transaction.category,
+      category: envelope.categoryMarker,
       description: transaction.description,
       isAddition: transaction.isAddition,
-      allowSplit: false,
       isSavings: true,
     );
 
@@ -345,16 +399,11 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
 
     if (!mounted) return;
 
-    final transactionLabel =
-        transaction.category != null && transaction.description != null
-        ? '${transaction.category} — ${transaction.description}'
-        : transaction.category ?? transaction.description;
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          '${transaction.isAddition ? 'Added' : 'Subtracted'} ${formatCurrency(transaction.amount)} '
-          '${transaction.isAddition ? 'to' : 'from'} savings${transactionLabel != null ? ' in $transactionLabel' : ''}',
+          '${transaction.isAddition ? 'Added' : 'Deducted'} ${formatCurrency(transaction.amount)} '
+          '${transaction.isAddition ? 'to' : 'from'} ${envelope.label}',
         ),
       ),
     );
@@ -380,7 +429,6 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
       category: null,
       description: 'Balance adjustment',
       isAddition: difference > 0,
-      allowSplit: false,
     );
 
     await _loadSnapshot();

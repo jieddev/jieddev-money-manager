@@ -8,15 +8,6 @@
     android:padding="16dp"
     android:background="#0B1516">
 
-    <!-- <TextView
-        android:id="@+id/widget_title"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Money Manager"
-        android:textStyle="bold"
-        android:textSize="18sp"
-        android:textColor="@android:color/white" /> -->
-
     <TextView
         android:id="@+id/widget_balance"
         android:layout_width="wrap_content"
@@ -27,6 +18,28 @@
         android:textColor="@android:color/white"
         android:layout_marginBottom="16dp"
         />
+
+      <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Spare balance: "
+            android:textSize="14sp"
+            android:textColor="@android:color/white" />
+
+        <TextView
+          android:id="@+id/widget_spare_balance"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="No Spare"
+          android:textSize="12sp"
+          android:textColor="@android:color/white" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/widget_history"

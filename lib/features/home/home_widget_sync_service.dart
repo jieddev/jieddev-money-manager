@@ -5,7 +5,8 @@ import '../../data/money_manager_repository.dart';
 
 class HomeWidgetSyncService {
   Future<void> sync(MoneyManagerSnapshot snapshot) async {
-    await HomeWidget.saveWidgetData<int>('balance', snapshot.balance);
+    await HomeWidget.saveWidgetData<int>('balance', snapshot.balance + snapshot.needsBalance + snapshot.rewardFundBalance + snapshot.savingsBalance + snapshot.emergencyFundBalance);
+    await HomeWidget.saveWidgetData<int>('spare_balance', snapshot.balance);
     await HomeWidget.saveWidgetData<String>(
       'transaction_history',
       _buildWidgetTransactionHistory(snapshot.transactions),

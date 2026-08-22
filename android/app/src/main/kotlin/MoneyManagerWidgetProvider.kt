@@ -17,6 +17,7 @@ class MoneyManagerWidgetProvider : AppWidgetProvider() {
 
         for (appWidgetId in appWidgetIds) {
             val balance = widgetData.getInt("balance", 0)
+            val spareBalance = widgetData.getInt("spare_balance", 0)
             val transactionHistory = widgetData.getString("transaction_history", "No transactions yet.")
                 ?: "No transactions yet."
 
@@ -30,6 +31,7 @@ class MoneyManagerWidgetProvider : AppWidgetProvider() {
                 )
 
                 setTextViewText(R.id.widget_balance, formatCurrency(balance))
+                setTextViewText(R.id.widget_spare_balance, formatCurrency(spareBalance))
                 setTextViewText(R.id.widget_history, transactionHistory)
             }
 

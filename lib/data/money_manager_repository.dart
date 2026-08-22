@@ -10,6 +10,7 @@ class TransactionRecord {
     required this.isAddition,
     required this.createdAt,
     this.isSavings = false,
+    this.envelope,
   });
 
   final int id;
@@ -19,6 +20,7 @@ class TransactionRecord {
   final bool isAddition;
   final DateTime createdAt;
   final bool isSavings;
+  final String? envelope;
 
   String get displayText {
     final hasCategory = category != null && category!.isNotEmpty;
@@ -48,6 +50,9 @@ class MoneyManagerSnapshot {
     required this.hasMoreTransactions,
     required this.weeklyBalancePoints,
     this.savingsBalance = 0,
+    this.needsBalance = 0,
+    this.rewardFundBalance = 0,
+    this.emergencyFundBalance = 0,
   });
 
   final int balance;
@@ -56,6 +61,9 @@ class MoneyManagerSnapshot {
   final bool hasMoreTransactions;
   final List<BalancePoint> weeklyBalancePoints;
   final int savingsBalance;
+  final int needsBalance;
+  final int rewardFundBalance;
+  final int emergencyFundBalance;
 }
 
 class BalancePoint {
@@ -88,7 +96,6 @@ abstract class MoneyManagerRepository {
     String? category,
     String? description,
     required bool isAddition,
-    bool allowSplit = true,
     bool isSavings = false,
   });
 
@@ -101,10 +108,6 @@ abstract class MoneyManagerRepository {
     String? description,
     required bool isAddition,
   });
-
-  Future<bool> loadSaveTenPercentEnabled();
-
-  Future<void> setSaveTenPercentEnabled(bool enabled);
 }
 
 class SqliteMoneyManagerRepository implements MoneyManagerRepository {
@@ -113,8 +116,6 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
 
   final String _databaseName;
   Database? _database;
-
-  static const String _saveTenPercentSettingKey = 'save_ten_percent_enabled';
 
   static const List<String> _defaultCategories = <String>[
     'Food',
@@ -125,6 +126,12 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     'Other',
   ];
 
+  static const Map<String, String> _envelopeCategoryMarkers = {
+    'Needs': 'needs',
+    'Reward Fund': 'rewardFund',
+    'Emergency Fund': 'emergencyFund',
+  };
+
   Future<Database> get _db async {
     final existing = _database;
     if (existing != null) {
@@ -134,7 +141,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     final databasesPath = await getDatabasesPath();
     final db = await openDatabase(
       path.join(databasesPath, _databaseName),
-      version: 3,
+      version: 4,
       onCreate: (database, version) async {
         await _createSchema(database);
       },
@@ -144,6 +151,9 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
         }
         if (oldVersion < 3) {
           await _addSavingsSupport(database);
+        }
+        if (oldVersion < 4) {
+          await _addEnvelopeSupport(database);
         }
       },
     );
@@ -169,9 +179,21 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       '''
       SELECT COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS savings_balance
       FROM transactions
-      WHERE is_savings = 1
+      WHERE is_savings = 1 AND envelope IS NULL
       ''',
     );
+    final envelopeBalanceRows = await db.rawQuery(
+      '''
+      SELECT envelope, COALESCE(SUM(CASE WHEN is_addition = 1 THEN amount ELSE -amount END), 0) AS envelope_balance
+      FROM transactions
+      WHERE envelope IS NOT NULL
+      GROUP BY envelope
+      ''',
+    );
+    final envelopeBalances = <String, int>{
+      for (final row in envelopeBalanceRows)
+        (row['envelope'] as String): (row['envelope_balance'] as int?) ?? 0,
+    };
     final transactionRows = await db.query(
       'transactions',
       orderBy: 'created_at DESC, id DESC',
@@ -196,6 +218,9 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       hasMoreTransactions: hasMoreTransactions,
       weeklyBalancePoints: weeklyBalancePoints,
       savingsBalance: (savingsBalanceRows.first['savings_balance'] as int?) ?? 0,
+      needsBalance: envelopeBalances['needs'] ?? 0,
+      rewardFundBalance: envelopeBalances['rewardFund'] ?? 0,
+      emergencyFundBalance: envelopeBalances['emergencyFund'] ?? 0,
     );
   }
 
@@ -235,7 +260,6 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     String? category,
     String? description,
     required bool isAddition,
-    bool allowSplit = true,
     bool isSavings = false,
   }) async {
     if ((category == null || category.isEmpty) &&
@@ -245,41 +269,43 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
 
     final db = await _db;
     final createdAt = DateTime.now().toUtc();
+    final envelope = isSavings ? _envelopeCategoryMarkers[category] : null;
 
-    final shouldAttemptSplit = !isSavings && isAddition && allowSplit && amount > 0;
-    final savingsCut = shouldAttemptSplit ? (amount * 10) ~/ 100 : 0;
-    final isSplitting = savingsCut > 0 && await _isSaveTenPercentEnabled(db);
-    final mainAmount = isSplitting ? amount - savingsCut : amount;
-
-    final mainId = await db.insert(
+    final id = await db.insert(
       'transactions',
       <String, Object?>{
-        'amount': mainAmount,
+        'amount': amount,
         'category': category,
         'description': description,
         'is_addition': isAddition ? 1 : 0,
         'created_at': createdAt.toIso8601String(),
         'is_savings': isSavings ? 1 : 0,
         'linked_transaction_id': null,
+        'envelope': envelope,
       },
     );
 
-    if (isSplitting) {
+    if (isSavings) {
+      // Money moving into/out of an envelope pool comes from/returns to the
+      // general balance, rather than being tracked as a disconnected pool.
       await db.insert(
         'transactions',
         <String, Object?>{
-          'amount': savingsCut,
-          'category': category,
-          'description': description,
-          'is_addition': 1,
+          'amount': amount,
+          'category': null,
+          'description': isAddition
+              ? 'Transfer to ${_envelopeLabelForMirror(category)}'
+              : 'Transfer from ${_envelopeLabelForMirror(category)}',
+          'is_addition': isAddition ? 0 : 1,
           'created_at': createdAt.toIso8601String(),
-          'is_savings': 1,
-          'linked_transaction_id': mainId,
+          'is_savings': 0,
+          'linked_transaction_id': id,
+          'envelope': null,
         },
       );
     }
 
-    if (category != null && category.isNotEmpty) {
+    if (category != null && category.isNotEmpty && envelope == null) {
       await db.insert(
         'categories',
         <String, Object?>{'name': category},
@@ -288,15 +314,18 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     }
 
     return TransactionRecord(
-      id: mainId,
-      amount: mainAmount,
+      id: id,
+      amount: amount,
       category: category,
       description: description,
       isAddition: isAddition,
       createdAt: createdAt,
       isSavings: isSavings,
+      envelope: envelope,
     );
   }
+
+  String _envelopeLabelForMirror(String? category) => category ?? 'Savings';
 
   @override
   Future<void> deleteTransaction(int id) async {
@@ -349,7 +378,9 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       whereArgs: <Object?>[id],
     );
 
-    if (category != null && category.isNotEmpty) {
+    // envelope is intentionally not editable here, matching how is_savings
+    // also can't be changed via this method.
+    if (category != null && category.isNotEmpty && existing.envelope == null) {
       await db.insert(
         'categories',
         <String, Object?>{'name': category},
@@ -365,36 +396,8 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       isAddition: isAddition,
       createdAt: existing.createdAt,
       isSavings: existing.isSavings,
+      envelope: existing.envelope,
     );
-  }
-
-  @override
-  Future<bool> loadSaveTenPercentEnabled() async {
-    final db = await _db;
-    return _isSaveTenPercentEnabled(db);
-  }
-
-  @override
-  Future<void> setSaveTenPercentEnabled(bool enabled) async {
-    final db = await _db;
-    await db.insert(
-      'settings',
-      <String, Object?>{
-        'key': _saveTenPercentSettingKey,
-        'value': enabled ? '1' : '0',
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<bool> _isSaveTenPercentEnabled(Database db) async {
-    final rows = await db.query(
-      'settings',
-      where: 'key = ?',
-      whereArgs: <Object?>[_saveTenPercentSettingKey],
-      limit: 1,
-    );
-    return rows.isNotEmpty && rows.first['value'] == '1';
   }
 
   Future<void> _createSchema(Database database) async {
@@ -413,13 +416,8 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
         is_addition INTEGER NOT NULL,
         created_at TEXT NOT NULL,
         is_savings INTEGER NOT NULL DEFAULT 0,
-        linked_transaction_id INTEGER
-      )
-    ''');
-    await database.execute('''
-      CREATE TABLE settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
+        linked_transaction_id INTEGER,
+        envelope TEXT
       )
     ''');
 
@@ -471,6 +469,10 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
     ''');
   }
 
+  Future<void> _addEnvelopeSupport(Database database) async {
+    await database.execute('ALTER TABLE transactions ADD COLUMN envelope TEXT');
+  }
+
   TransactionRecord _transactionFromRow(Map<String, Object?> row) {
     return TransactionRecord(
       id: row['id'] as int,
@@ -480,6 +482,7 @@ class SqliteMoneyManagerRepository implements MoneyManagerRepository {
       isAddition: (row['is_addition'] as int) == 1,
       createdAt: DateTime.parse(row['created_at'] as String),
       isSavings: (row['is_savings'] as int? ?? 0) == 1,
+      envelope: row['envelope'] as String?,
     );
   }
 
