@@ -114,10 +114,56 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
         ),
       ),
       const SizedBox(height: 12),
-      Text(
-        'Savings: ${formatCurrency(_savingsBalance)}',
-        textAlign: TextAlign.start,
-        style: Theme.of(context).textTheme.titleSmall,
+      Container(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
+          color: Colors.grey,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            GestureDetector(
+              child: Column(
+                children: [
+                  Text('Needs (40%)'),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
+                ],
+              ),
+            ),
+            GestureDetector(
+              child: Column(
+                children: [
+                  Text('Reward Fund/Wants (20%)'),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
+                ],
+              ),
+            ),
+            GestureDetector(
+              child: Column(
+                children: [
+                  Text('Savings (30%)'),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text(formatCurrency(_savingsBalance)), Text("50, 000.00 Max/Year")]),
+                ],
+              ),
+            ),
+            GestureDetector(
+              child: Column(
+                children: [
+                  Text('Emergency Fund (10%)'),
+                  Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
+                ],
+              ),
+            ),
+            GestureDetector(
+              child: Text(
+                'Savings: ${formatCurrency(_savingsBalance)}',
+                textAlign: TextAlign.start,
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              onTap: () => debugPrint("Tapped"),
+            ),
+          ],
+        ),
       ),
       const SizedBox(height: 24),
       Row(
