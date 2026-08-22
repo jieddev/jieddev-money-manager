@@ -130,6 +130,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                 ],
               ),
             ),
+            SizedBox(height: 20,),
             GestureDetector(
               child: Column(
                 children: [
@@ -138,6 +139,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                 ],
               ),
             ),
+            SizedBox(height: 20,),
             GestureDetector(
               child: Column(
                 children: [
@@ -146,6 +148,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                 ],
               ),
             ),
+            SizedBox(height: 20,),
             GestureDetector(
               child: Column(
                 children: [
@@ -153,7 +156,9 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                   Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,children: [Text("500.00"), Text("50, 000.00 Max/Year")]),
                 ],
               ),
+              onTap: () => debugPrint("Tapped Emergency Fund"),
             ),
+            SizedBox(height: 20,),
             GestureDetector(
               child: Text(
                 'Savings: ${formatCurrency(_savingsBalance)}',
@@ -162,6 +167,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
               ),
               onTap: () => debugPrint("Tapped"),
             ),
+            SizedBox(height: 20,),
           ],
         ),
       ),
