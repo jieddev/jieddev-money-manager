@@ -141,6 +141,7 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
             ),
             SizedBox(height: 20,),
             GestureDetector(
+              onTap: _openSavingsEntryPage,
               child: Column(
                 children: [
                   Text('Savings (30%)'),
@@ -157,15 +158,6 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
                 ],
               ),
               onTap: () => debugPrint("Tapped Emergency Fund"),
-            ),
-            SizedBox(height: 20,),
-            GestureDetector(
-              child: Text(
-                'Savings: ${formatCurrency(_savingsBalance)}',
-                textAlign: TextAlign.start,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              onTap: () => debugPrint("Tapped"),
             ),
             SizedBox(height: 20,),
           ],

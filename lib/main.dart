@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'features/home/home_page.dart';
-
+import 'package:device_preview/device_preview.dart';
 import 'data/money_manager_repository.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final repository = SqliteMoneyManagerRepository();
-  runApp(MyApp(repository: repository));
+  runApp(DevicePreview(builder: ((context) => MyApp(repository: repository))));
 }
 
 class MyApp extends StatelessWidget {
