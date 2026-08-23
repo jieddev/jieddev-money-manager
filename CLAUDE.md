@@ -50,4 +50,5 @@ These already capture project history — consult them instead of re-deriving th
 
 ## NOTES
 - Use code that is easy to understand without using complex over-engineered code.
-- Do not update the JOURNAL.md markdown file.
+- Do not update the JOURNAL.md markdown file.'
+- Avoid editing the `widget_test.dart`

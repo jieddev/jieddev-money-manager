@@ -8,5 +8,9 @@
 
 - Add "Enter Initial balance" feature ✅
 
-- Add the Sweldo split feature
+- Add the Savings, Emergency Fund, Reward Fund, Needs split feature
+
+- Improve UI
+
+
 

@@ -51,3 +51,21 @@ FIX: Add `android:id="@+id/widget_root` inside `money_manager_widget.xml` to ref
 - Created `enter_balance_dialog.dart` that accepts currentBalance and displays a dialog to input current balance.
 - Modified `home_page.dart` to add "Set Balance" button that calls `_openEnterBalanceDialog`.
   - `_openEnterBalanceDialog` that shows the dialog, checks if the difference of new balance and current balance is equal to 0 or not, if not then it will add the transaction to the repository and reload snapshot and display a snackbar message.
+
+## Add Device Preview
+- Add `device_preview` dependency and import it at `main.dart`.
+- Wrapped the app with `DevicePreview`.
+
+## Add Budget Breakdown Display on Home Page
+
+- Updated `home_page` and created a layout for the budget breakdown card
+
+## Savings Transaction Page to add or deduct savings balance
+
+- Created a `savings_transaction_page`
+
+## Created a reusable transaction envelope for each budget category
+
+  - Reusable page for each category transaction
+  - Redesign transaction envelope
+  - Display Spare balance

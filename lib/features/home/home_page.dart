@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../core/currency_formatter.dart';
-import '../../core/date_formatter.dart';
 import '../../data/money_manager_repository.dart';
 import 'enter_balance_dialog.dart';
 import 'envelope_transaction_page.dart';
 import 'home_widget_sync_service.dart';
 import 'transaction_entry_page.dart';
 import 'widgets/balance_chart_card.dart';
+import 'widgets/budget_breakdown_card.dart';
+import 'widgets/recent_transactions_card.dart';
 
 class MoneyManagerHomePage extends StatefulWidget {
   const MoneyManagerHomePage({super.key, required this.repository});
@@ -94,149 +95,115 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     });
   }
 
+  static const int _needsMaxPerYear = 50000;
+  static const int _rewardFundMaxPerYear = 10000;
+  static const int _savingsMaxPerYear = 100000;
+  static const int _emergencyFundMaxPerYear = 20000;
+
+  List<EnvelopeBudget> get _envelopeBudgets => [
+    EnvelopeBudget(
+      envelope: Envelope.needs,
+      label: 'Needs',
+      percentage: 40,
+      balance: _needsBalance,
+      maxPerYear: _needsMaxPerYear,
+    ),
+    EnvelopeBudget(
+      envelope: Envelope.rewardFund,
+      label: 'Reward Fund/Wants',
+      percentage: 20,
+      balance: _rewardFundBalance,
+      maxPerYear: _rewardFundMaxPerYear,
+    ),
+    EnvelopeBudget(
+      envelope: Envelope.savings,
+      label: 'Savings',
+      percentage: 30,
+      balance: _savingsBalance,
+      maxPerYear: _savingsMaxPerYear,
+    ),
+    EnvelopeBudget(
+      envelope: Envelope.emergencyFund,
+      label: 'Emergency Fund',
+      percentage: 10,
+      balance: _emergencyFundBalance,
+      maxPerYear: _emergencyFundMaxPerYear,
+    ),
+  ];
+
   List<Widget> _buildBodyChildren(BuildContext context) {
     final children = <Widget>[
       const SizedBox(height: 12),
       Text(
-        'Current balance',
+        'Overall Balance',
         textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
-      const SizedBox(height: 12),
-      Card(
-        elevation: 0,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            children: [
-              Text(
-                formatCurrency(_balance + _needsBalance + _rewardFundBalance + _savingsBalance + _emergencyFundBalance),
-                textAlign: TextAlign.center,
-                style: Theme.of(
-                  context,
-                ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-
-              SizedBox(height: 30,),
-
-              Row(
-                children: [
-                  Text("Spare Balance: ${formatCurrency(_balance)}"),
-                ],
-              ),
-            ],
-          ),
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
       ),
-      const SizedBox(height: 3),
-      Row(
+      const SizedBox(height: 8),
+      Text(
+        formatCurrency(
+          _balance +
+              _needsBalance +
+              _rewardFundBalance +
+              _savingsBalance +
+              _emergencyFundBalance,
+        ),
+        textAlign: TextAlign.center,
+        style: Theme.of(
+          context,
+        ).textTheme.displaySmall?.copyWith(fontWeight: FontWeight.w700),
+      ),
+      const SizedBox(height: 8),
+      Text(
+        'Spare Balance: ${formatCurrency(_balance)}',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      ),
+      const SizedBox(height: 24),
+      Column(
         children: [
-          Expanded(
-            child: FilledButton.icon(
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.black,
+                foregroundColor: Colors.white,
+              ),
               onPressed: _openTransactionPage,
-              label: const Text('Update Money'),
+              child: const Text('Update Money'),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton.icon(
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(2),
+                  side: const BorderSide(color: Colors.black),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+              ),
               onPressed: _openEnterBalanceDialog,
-              label: const Text('Set Balance'),
+              child: const Text('Set Balance'),
             ),
           ),
         ],
       ),
       const SizedBox(height: 24),
-      Container(
-        padding: const EdgeInsets.all(16.0),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.black),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: () => _openEnvelopeEntryPage(Envelope.needs),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Needs (40%)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(formatCurrency(_needsBalance)),
-                      Text("50, 000.00 Max/Year"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 20),
-            GestureDetector(
-              onTap: () => _openEnvelopeEntryPage(Envelope.savings),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Savings (30%)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(formatCurrency(_savingsBalance)),
-                      Text("50, 000.00 Max/Year"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 20),
-            GestureDetector(
-              onTap: () => _openEnvelopeEntryPage(Envelope.rewardFund),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Reward Fund/Wants (20%)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(formatCurrency(_rewardFundBalance)),
-                      Text("50, 000.00 Max/Year"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 20),
-            GestureDetector(
-              onTap: () => _openEnvelopeEntryPage(Envelope.emergencyFund),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Emergency Fund (10%)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(formatCurrency(_emergencyFundBalance)),
-                      Text("50, 000.00 Max/Year"),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 20),
-          ],
-        ),
+      BudgetBreakdownCard(
+        budgets: _envelopeBudgets,
+        onTapEnvelope: _openEnvelopeEntryPage,
       ),
       const SizedBox(height: 24),
     ];
@@ -252,78 +219,16 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
     }
 
     children.addAll(<Widget>[
-      BalanceChartCard(points: _weeklyBalancePoints),
-      const SizedBox(height: 24),
-      Text(
-        'Transaction history',
-        style: Theme.of(context).textTheme.titleMedium,
+      RecentTransactionsCard(
+        transactions: _transactions,
+        hasMoreTransactions: _hasMoreTransactions,
+        isLoadingMore: _isLoadingMoreTransactions,
+        onLoadMore: _loadMoreTransactions,
+        onEdit: _editTransaction,
+        onDelete: _deleteTransaction,
       ),
-      const SizedBox(height: 12),
-      if (_transactions.isEmpty)
-        const Center(child: Text('No transactions yet.'))
-      else
-        Column(
-          children: [
-            for (var index = 0; index < _transactions.length; index++) ...[
-              Card(
-                elevation: 0,
-                child: ListTile(
-                  leading: CircleAvatar(),
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${_transactions[index].isAddition ? '+' : '-'}${formatCurrency(_transactions[index].amount)}',
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(
-                              color: _transactions[index].isAddition
-                                  ? Colors.green[700]
-                                  : Colors.red[700],
-                              fontWeight: FontWeight.w600,
-                            ),
-                      ),
-                      Text(_transactions[index].displayText),
-                    ],
-                  ),
-                  subtitle: Text(formatDate(_transactions[index].createdAt)),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined),
-                        tooltip: 'Edit',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () => _editTransaction(_transactions[index]),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        tooltip: 'Delete',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: () =>
-                            _deleteTransaction(_transactions[index]),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (index < _transactions.length - 1) const SizedBox(height: 12),
-            ],
-            if (_hasMoreTransactions)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: TextButton(
-                  onPressed: _isLoadingMoreTransactions
-                      ? null
-                      : _loadMoreTransactions,
-                  child: Text(
-                    _isLoadingMoreTransactions
-                        ? 'Loading more...'
-                        : 'Load more',
-                  ),
-                ),
-              ),
-          ],
-        ),
+      const SizedBox(height: 24),
+      BalanceChartCard(points: _weeklyBalancePoints),
     ]);
 
     return children;
@@ -512,7 +417,16 @@ class _MoneyManagerHomePageState extends State<MoneyManagerHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Money Manager'), centerTitle: true),
+      appBar: AppBar(
+        title: Text(
+          'JIEDDEV MONEY MANAGER',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.5,
+          ),
+        ),
+        centerTitle: false,
+      ),
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
