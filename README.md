@@ -1,7 +1,7 @@
 # Jieddev Finance/Money Manager
 ### Project Name
 ---
-Jieddev Money Manager
+Jieddev Finance/Money Manager
 ### Purpose
 To keep track on my finances and avoid forgetting what I spent and wondering where my cash went.
 
