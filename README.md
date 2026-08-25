@@ -1,4 +1,4 @@
-# Jieddev Money Manager
+# Jieddev Finance/Money Manager
 ### Project Name
 ---
 Jieddev Money Manager
